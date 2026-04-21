@@ -1,2 +1,2 @@
 # Virtual_lab
-# shivam bhadwa hai
+# first of all we should be humble and pray to god 
