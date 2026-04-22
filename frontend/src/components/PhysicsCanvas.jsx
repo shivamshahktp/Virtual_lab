@@ -538,6 +538,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material }) {
       socket.off('add-constraint', onAddConstraint)
       canvasContainer.removeEventListener('mousedown', handleCanvasClick)
       window.removeEventListener('resize', handleResize)
+      window.removeEventListener('trigger-save', handleSave)
       Render.stop(render)
       Runner.stop(runner)
       Engine.clear(engine)
