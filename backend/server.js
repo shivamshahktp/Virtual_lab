@@ -77,6 +77,12 @@ io.on('connection', (socket) => {
     socket.to(data.roomId).emit('remove-body', data);
   });
 
+  // ── A user clears the canvas ──
+  socket.on('clear-canvas', (data) => {
+    // data = { roomId }
+    socket.to(data.roomId).emit('clear-canvas', data);
+  });
+
   // ── Disconnect ──
   socket.on('disconnect', () => {
     if (socket.roomId) {
