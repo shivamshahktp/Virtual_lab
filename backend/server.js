@@ -21,17 +21,13 @@ const io = new Server(server, {
   }
 });
 
-// Connect to MongoDB Atlas
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('📦 Connected to MongoDB successfully!'))
-  .catch((err) => console.error('❌ MongoDB connection error:', err));
-
 // Basic Health Check Route (Phase 1 Requirement)
 app.get('/api/status', (req, res) => {
   res.json({ status: 'Virtual Lab Backend is running seamlessly!' });
 });
 
 // Connect the Room API routes
+// (Ensure you have a 'routes' folder with a 'rooms.js' file)
 const roomRoutes = require('./routes/rooms');
 app.use('/api/rooms', roomRoutes);
 
@@ -92,8 +88,27 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start the Server (Port 5001 to avoid Mac AirPlay conflicts)
-const PORT = process.env.PORT || 5001;
-server.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+// ── DATABASE CONNECTION AND SERVER STARTUP ──
+const startServer = async () => {
+  try {
+    // 1. Force the app to wait for MongoDB to connect first
+    console.log(process.env.MONGO_URI);
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log('📦 Connected to MongoDB Atlas successfully!');
+
+    // 2. ONLY start the server if the database connection was successful
+    const PORT = process.env.PORT || 5001;
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on http://localhost:${PORT}`);
+    });
+
+  } catch (err) {
+    // 3. Catch errors immediately and kill the server so it doesn't hang
+    console.error('❌ CRITICAL: MongoDB connection failed!');
+    console.error(err.message);
+    process.exit(1); 
+  }
+};
+
+// Execute the startup function
+startServer();
