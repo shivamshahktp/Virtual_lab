@@ -72,6 +72,31 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
   }, [isPaused])
 
   useEffect(() => {
+    // 0. Patch Matter.js Constraint solver to natively support slack ropes!
+    if (!Matter.Constraint._originalSolve) {
+      Matter.Constraint._originalSolve = Matter.Constraint.solve;
+      Matter.Constraint.solve = function(constraint, timeScale) {
+        if (constraint.isRope) {
+          let pA = constraint.pointA;
+          let pB = constraint.pointB;
+          if (constraint.bodyA) pA = Matter.Vector.add(constraint.bodyA.position, pA);
+          if (constraint.bodyB) pB = Matter.Vector.add(constraint.bodyB.position, pB);
+          
+          if (pA && pB) {
+            const dist = Matter.Vector.magnitude(Matter.Vector.sub(pA, pB));
+            if (dist < (constraint.maxLength || constraint.length) * 0.99) {
+              constraint.stiffness = 0; // Go slack (applies 0 pushing force)
+              constraint.render.visible = false; // Hide straight line
+            } else {
+              constraint.stiffness = 1; // Pull tight
+              constraint.render.visible = true;
+            }
+          }
+        }
+        Matter.Constraint._originalSolve(constraint, timeScale);
+      };
+    }
+
     // 1. Create the physics engine
     const engine = Engine.create()
     engineRef.current = engine
@@ -291,17 +316,20 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
                   render: c.hidden ? { visible: false } : { strokeStyle: '#f59e0b', lineWidth: 4 }
                 });
                 Composite.add(engine.world, pivot);
-              } else if (c.type === 'spring') {
+              } else if (c.type === 'spring' || c.type === 'rod' || c.type === 'rope') {
                 const bodyB = Composite.get(engine.world, c.bodyBId, 'body');
                 if (bodyA && bodyB) {
-                  const spring = Constraint.create({
+                  const newConstraint = Constraint.create({
                     id: c.id, bodyA: bodyA, bodyB: bodyB, 
                     pointA: c.pointA || { x: 0, y: 0 },
                     pointB: c.pointB || { x: 0, y: 0 },
                     stiffness: c.stiffness || 0.05,
-                    render: { strokeStyle: '#ef4444', lineWidth: 3 }
+                    length: c.length,
+                    isRope: c.type === 'rope' || c.isRope,
+                    maxLength: c.maxLength,
+                    render: c.type === 'rod' ? { strokeStyle: '#94a3b8', lineWidth: 5 } : c.type === 'rope' ? { strokeStyle: '#d97706', lineWidth: 3 } : { strokeStyle: '#ef4444', lineWidth: 3 }
                   });
-                  Composite.add(engine.world, spring);
+                  Composite.add(engine.world, newConstraint);
                 }
               }
             });
@@ -356,7 +384,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         .filter(c => c.label !== 'Mouse Constraint')
         .map(c => ({
           id: c.id,
-          type: c.length === 0 ? 'pivot' : 'spring',
+          type: c.length === 0 ? 'pivot' : (c.isRope ? 'rope' : (c.stiffness === 1 ? 'rod' : 'spring')),
           bodyAId: c.bodyA?.id,
           bodyBId: c.bodyB?.id,
           x: c.pointB?.x,
@@ -364,6 +392,9 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           pointA: c.pointA,
           pointB: c.pointB,
           stiffness: c.stiffness,
+          length: c.length,
+          isRope: c.isRope,
+          maxLength: c.maxLength,
           hidden: c.render?.visible === false
         }));
 
@@ -471,7 +502,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         }
       });
 
-      // 2. Drive motors
+      // 3. Drive motors
       engine.world.bodies.forEach(body => {
         if (body.isMotor && body.isStatic) {
           const speed = body.motorSpeed || 0.05;
@@ -539,6 +570,29 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         context.fillStyle = '#ef4444'
         context.fill()
       }
+
+      // Draw custom slack ropes
+      engine.world.constraints.forEach(c => {
+        if (c.isRope && c.stiffness === 0) {
+          const pA = c.bodyA ? Matter.Vector.add(c.bodyA.position, c.pointA) : c.pointA;
+          const pB = c.bodyB ? Matter.Vector.add(c.bodyB.position, c.pointB) : c.pointB;
+          
+          context.beginPath();
+          context.moveTo(pA.x, pA.y);
+          
+          // Draw a hanging bezier curve based on how much slack there is
+          const midX = (pA.x + pB.x) / 2;
+          const midY = (pA.y + pB.y) / 2;
+          const dist = Matter.Vector.magnitude(Matter.Vector.sub(pA, pB));
+          const slack = (c.maxLength || c.length) - dist;
+          
+          // Pull control point down by slack amount (gravity effect)
+          context.quadraticCurveTo(midX, midY + (slack * 1.5), pB.x, pB.y);
+          context.strokeStyle = '#d97706'; // rope color
+          context.lineWidth = 3;
+          context.stroke();
+        }
+      });
     })
 
     // C. Handle Click-to-Place (Spawning bodies and constraints)
@@ -689,7 +743,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           })
         }
 
-      } else if (currentTool === 'spring') {
+      } else if (currentTool === 'spring' || currentTool === 'rod' || currentTool === 'rope') {
         if (clickedBody && clickedBody.id !== 999) {
           if (!firstSelectedBodyRef.current) {
             // First body selected!
@@ -709,26 +763,40 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
               const dy = y - clickedBody.position.y;
               const localPointB = { x: dx, y: dy };
 
-              const spring = Constraint.create({
+              const pAWorld = Matter.Vector.add(firstSelectedBodyRef.current.position, firstSelectedPointRef.current);
+              const pBWorld = Matter.Vector.add(clickedBody.position, localPointB);
+              const dist = Matter.Vector.magnitude(Matter.Vector.sub(pAWorld, pBWorld));
+
+              const type = currentTool;
+              const stiffness = type === 'rod' ? 1 : (type === 'rope' ? 1 : (currentMaterial.springStiffness || 0.05));
+              const renderOpts = type === 'rod' ? { strokeStyle: '#94a3b8', lineWidth: 5 } : type === 'rope' ? { strokeStyle: '#d97706', lineWidth: 3 } : { strokeStyle: '#ef4444', lineWidth: 3 };
+
+              const newConstraint = Constraint.create({
                 id: bodyId,
                 bodyA: firstSelectedBodyRef.current,
                 pointA: firstSelectedPointRef.current,
                 bodyB: clickedBody,
                 pointB: localPointB,
-                stiffness: currentMaterial.springStiffness || 0.05,
-                render: { strokeStyle: '#ef4444', lineWidth: 3 }
+                stiffness: stiffness,
+                length: dist,
+                isRope: type === 'rope',
+                maxLength: type === 'rope' ? dist : undefined,
+                render: renderOpts
               })
-              Composite.add(engine.world, spring)
+              Composite.add(engine.world, newConstraint)
               actionHistory.push({ type: 'constraint', id: bodyId })
               socket.emit('add-constraint', {
                 roomId,
                 constraint: {
-                  id: bodyId, type: 'spring',
+                  id: bodyId, type: type,
                   bodyAId: firstSelectedBodyRef.current.id,
                   bodyBId: clickedBody.id,
                   pointA: firstSelectedPointRef.current,
                   pointB: localPointB,
-                  stiffness: currentMaterial.springStiffness || 0.05
+                  stiffness: stiffness,
+                  length: dist,
+                  isRope: type === 'rope',
+                  maxLength: type === 'rope' ? dist : undefined
                 }
               })
             }
@@ -824,19 +892,22 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           render: c.hidden ? { visible: false } : { strokeStyle: '#f59e0b', lineWidth: 4 }
         })
         Composite.add(engine.world, pivot)
-      } else if (c.type === 'spring') {
+      } else if (c.type === 'spring' || c.type === 'rod' || c.type === 'rope') {
         const bodyB = Composite.get(engine.world, c.bodyBId, 'body')
         if (bodyA && bodyB) {
-          const spring = Constraint.create({
+          const newConstraint = Constraint.create({
             id: c.id,
             bodyA: bodyA,
             bodyB: bodyB,
             pointA: c.pointA || { x: 0, y: 0 },
             pointB: c.pointB || { x: 0, y: 0 },
             stiffness: c.stiffness || 0.05,
-            render: { strokeStyle: '#ef4444', lineWidth: 3 }
+            length: c.length,
+            isRope: c.type === 'rope' || c.isRope,
+            maxLength: c.maxLength,
+            render: c.type === 'rod' ? { strokeStyle: '#94a3b8', lineWidth: 5 } : c.type === 'rope' ? { strokeStyle: '#d97706', lineWidth: 3 } : { strokeStyle: '#ef4444', lineWidth: 3 }
           })
-          Composite.add(engine.world, spring)
+          Composite.add(engine.world, newConstraint)
         }
       }
     }

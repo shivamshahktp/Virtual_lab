@@ -10,6 +10,8 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
     { id: 'circle', icon: '🟢', label: 'Spawn Circle' },
     { id: 'pivot', icon: '📌', label: 'Pin / Pivot (Click a body)' },
     { id: 'spring', icon: '〰️', label: 'Spring (Click 2 bodies) - Right-Click to adjust stiffness' },
+    { id: 'rod', icon: '🦯', label: 'Rigid Rod (Click 2 bodies)' },
+    { id: 'rope', icon: '🪢', label: 'Rope (Click 2 bodies)' },
     { id: 'motor', icon: '⚙️', label: 'Spawn Motor/Gear (Right-Click for Settings)' },
   ]
 
