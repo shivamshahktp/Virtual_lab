@@ -11,7 +11,19 @@ function App() {
   const [roomId, setRoomId] = useState(null)
   const [userCount, setUserCount] = useState(1)
   const [activeTool, setActiveTool] = useState('cursor')
-  const [material, setMaterial] = useState({ restitution: 0.6, friction: 0.1, density: 0.001 })
+  const [material, setMaterial] = useState({ 
+    restitution: 0.6, 
+    friction: 0.1, 
+    density: 0.001, 
+    springStiffness: 0.05,
+    motorType: 'gear',
+    gearTeeth: 12,
+    gearRadius: 40,
+    isMotorized: true,
+    motorSpeed: 0.05,
+    motorDirection: 'clockwise'
+  })
+  const [isPaused, setIsPaused] = useState(false)
 
   // Connect socket & join room when roomId changes
   useEffect(() => {
@@ -66,6 +78,25 @@ function App() {
           <code className="px-3 py-1 rounded-lg bg-lab-accent/20 text-lab-accent-light font-mono text-sm font-semibold tracking-wider">
             {roomId}
           </code>
+          
+          <button
+            onClick={() => setIsPaused(!isPaused)}
+            className={`px-3 py-1 rounded-lg text-sm font-semibold transition-colors shadow-lg cursor-pointer flex items-center gap-2 ${
+              isPaused 
+                ? 'bg-lab-warning hover:bg-yellow-500 text-white' 
+                : 'bg-lab-success hover:bg-green-500 text-white'
+            }`}
+          >
+            <span>{isPaused ? '▶️ Play' : '⏸️ Pause'}</span>
+          </button>
+
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent('trigger-clear'))}
+            className="px-3 py-1 bg-lab-danger hover:bg-red-600 text-white rounded-lg text-sm font-semibold transition-colors shadow-lg cursor-pointer flex items-center gap-2"
+          >
+            <span>🗑️ Clear Canvas</span>
+          </button>
+
           <button
             onClick={() => window.dispatchEvent(new CustomEvent('trigger-save'))}
             className="px-3 py-1 bg-lab-accent hover:bg-lab-accent-light text-white rounded-lg text-sm font-semibold transition-colors shadow-lg cursor-pointer flex items-center gap-2"
@@ -83,10 +114,10 @@ function App() {
 
       {/* Physics Canvas fills remaining space */}
       <main className="flex-1 overflow-hidden relative">
-        <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} />
+        <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} material={material} setMaterial={setMaterial} />
         <MaterialPicker material={material} setMaterial={setMaterial} />
         <AnalyticsPanel />
-        <PhysicsCanvas roomId={roomId} activeTool={activeTool} material={material} />
+        <PhysicsCanvas roomId={roomId} activeTool={activeTool} material={material} isPaused={isPaused} />
       </main>
     </div>
   )
