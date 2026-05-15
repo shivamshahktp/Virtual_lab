@@ -40,6 +40,7 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.roomId = roomId; // Store for later use
     const count = io.sockets.adapter.rooms.get(roomId)?.size || 0;
+    socket.emit('room-user-count', { roomId, userCount: count });
     console.log(`🚪 ${socket.id} joined room ${roomId} (${count} users)`);
 
     // Notify others in the room that someone joined
@@ -61,16 +62,28 @@ io.on('connection', (socket) => {
     socket.to(data.roomId).emit('add-body', data);
   });
 
+  socket.on('update-body-properties', (data) => {
+    socket.to(data.roomId).emit('update-body-properties', data);
+  });
+
   // ── A user adds a constraint (pivot, spring) ──
   socket.on('add-constraint', (data) => {
     // data = { roomId, constraint: { type, bodyAId, bodyBId... } }
     socket.to(data.roomId).emit('add-constraint', data);
   });
 
+  socket.on('update-constraint', (data) => {
+    socket.to(data.roomId).emit('update-constraint', data);
+  });
+
   // ── A user removes a body from the canvas ──
   socket.on('remove-body', (data) => {
     // data = { roomId, bodyId }
     socket.to(data.roomId).emit('remove-body', data);
+  });
+
+  socket.on('remove-constraint', (data) => {
+    socket.to(data.roomId).emit('remove-constraint', data);
   });
 
   // ── A user clears the canvas ──
@@ -98,7 +111,6 @@ io.on('connection', (socket) => {
 const startServer = async () => {
   try {
     // 1. Force the app to wait for MongoDB to connect first
-    console.log(process.env.MONGO_URI);
     await mongoose.connect(process.env.MONGO_URI);
     console.log('📦 Connected to MongoDB Atlas successfully!');
 

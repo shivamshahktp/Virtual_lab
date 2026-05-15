@@ -27,6 +27,93 @@ const createGear = (x, y, radius, teethCount, options) => {
   return Matter.Body.create({ parts: parts, ...options });
 };
 
+const getBodyDimensions = (body) => {
+  if (body.circleRadius) {
+    return { radius: body.circleRadius }
+  }
+
+  return {
+    width: body.bounds.max.x - body.bounds.min.x,
+    height: body.bounds.max.y - body.bounds.min.y,
+  }
+}
+
+const getConstraintType = (constraint) => {
+  if (constraint.length === 0) return 'pivot'
+  if (constraint.isRope) return 'rope'
+  if (constraint.stiffness === 1) return 'rod'
+  return 'spring'
+}
+
+const getConstraintStrokeStyle = (type, isSelected = false) => {
+  if (type === 'pivot') {
+    return {
+      strokeStyle: isSelected ? '#fcd34d' : '#f59e0b',
+      lineWidth: isSelected ? 5 : 4,
+    }
+  }
+
+  if (type === 'rod') {
+    return {
+      strokeStyle: isSelected ? '#38bdf8' : '#94a3b8',
+      lineWidth: isSelected ? 7 : 5,
+    }
+  }
+
+  if (type === 'rope') {
+    return {
+      strokeStyle: isSelected ? '#facc15' : '#d97706',
+      lineWidth: isSelected ? 5 : 3,
+    }
+  }
+
+  return {
+    strokeStyle: isSelected ? '#f87171' : '#ef4444',
+    lineWidth: isSelected ? 5 : 3,
+  }
+}
+
+const applyConstraintRender = (constraint, isSelected = false) => {
+  const type = getConstraintType(constraint)
+  if (constraint.render?.visible === false && type === 'pivot') return
+  Object.assign(constraint.render, getConstraintStrokeStyle(type, isSelected))
+}
+
+const getConstraintWorldPoint = (body, point) => {
+  if (body) {
+    return Matter.Vector.add(body.position, point || { x: 0, y: 0 })
+  }
+
+  return point || { x: 0, y: 0 }
+}
+
+const getDistanceToSegment = (point, start, end) => {
+  const dx = end.x - start.x
+  const dy = end.y - start.y
+
+  if (dx === 0 && dy === 0) {
+    return Math.hypot(point.x - start.x, point.y - start.y)
+  }
+
+  const t = Math.max(
+    0,
+    Math.min(1, ((point.x - start.x) * dx + (point.y - start.y) * dy) / (dx * dx + dy * dy))
+  )
+
+  const projection = {
+    x: start.x + t * dx,
+    y: start.y + t * dy,
+  }
+
+  return Math.hypot(point.x - projection.x, point.y - projection.y)
+}
+
+const resetBodyHighlight = (body) => {
+  if (!body?.render) return
+  body.render.lineWidth = 2
+  body.render.strokeStyle = body.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
+}
+
 export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }) {
   const canvasRef = useRef(null)
   const engineRef = useRef(null)
@@ -38,8 +125,11 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
   const firstSelectedBodyRef = useRef(null)
   // Ref to track the local point on the first body where the user clicked
   const firstSelectedPointRef = useRef(null)
+  const firstSelectedAnchorRef = useRef(null)
   // Ref for the currently selected body for telemetry
   const selectedBodyRef = useRef(null)
+  const selectedConstraintRef = useRef(null)
+  const pivotAnchorRef = useRef(null)
   // Ref for material settings
   const materialRef = useRef(material || { restitution: 0.6, friction: 0.1, density: 0.001 })
 
@@ -48,22 +138,85 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
 
     // Clear selection state if we switch tools to avoid weird behavior
     if (firstSelectedBodyRef.current) {
-      firstSelectedBodyRef.current.render.lineWidth = 2
-      firstSelectedBodyRef.current.render.strokeStyle = firstSelectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
+      resetBodyHighlight(firstSelectedBodyRef.current)
       firstSelectedBodyRef.current = null
       firstSelectedPointRef.current = null
     }
 
+    firstSelectedAnchorRef.current = null
+    pivotAnchorRef.current = null
+
     if (selectedBodyRef.current && activeTool !== 'cursor') {
-      selectedBodyRef.current.render.lineWidth = 2
-      selectedBodyRef.current.render.strokeStyle = selectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
+      resetBodyHighlight(selectedBodyRef.current)
       selectedBodyRef.current = null
+    }
+
+    if (selectedConstraintRef.current && activeTool !== 'cursor') {
+      applyConstraintRender(selectedConstraintRef.current, false)
+      selectedConstraintRef.current = null
+      window.dispatchEvent(new CustomEvent('constraint-selection-change', { detail: {} }))
     }
   }, [activeTool])
 
   useEffect(() => {
     materialRef.current = material || { restitution: 0.6, friction: 0.1, density: 0.001 }
   }, [material])
+
+  useEffect(() => {
+    const constraint = selectedConstraintRef.current
+    if (!constraint) return
+
+    const type = getConstraintType(constraint)
+    if (!['rope', 'spring', 'rod'].includes(type)) return
+
+    const nextLength = material?.ropeLength
+    if (typeof nextLength !== 'number' || Number.isNaN(nextLength)) return
+
+    constraint.length = nextLength
+    if (type === 'rope') {
+      constraint.maxLength = nextLength
+    }
+
+    socket.emit('update-constraint', {
+      roomId,
+      constraint: {
+        id: constraint.id,
+        length: nextLength,
+        maxLength: type === 'rope' ? nextLength : constraint.maxLength,
+      },
+    })
+  }, [material?.ropeLength, roomId])
+
+  useEffect(() => {
+    const selectedBody = selectedBodyRef.current
+    if (!selectedBody || selectedBody.id === 999) return
+
+    if (typeof material?.restitution === 'number') {
+      selectedBody.restitution = material.restitution
+    }
+
+    if (typeof material?.friction === 'number') {
+      selectedBody.friction = material.friction
+    }
+
+    if (
+      typeof material?.density === 'number' &&
+      !Number.isNaN(material.density) &&
+      !selectedBody.isStatic
+    ) {
+      Matter.Body.setDensity(selectedBody, material.density)
+    }
+
+    socket.emit('update-body-properties', {
+      roomId,
+      body: {
+        id: selectedBody.id,
+        restitution: selectedBody.restitution,
+        friction: selectedBody.friction,
+        density: selectedBody.density,
+      },
+    })
+  }, [material?.restitution, material?.friction, material?.density, roomId])
 
   useEffect(() => {
     if (runnerRef.current) {
@@ -152,8 +305,126 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     // --- ACTION HISTORY FOR UNDO ---
     const actionHistory = [];
 
+    const clearPendingSelections = () => {
+      if (firstSelectedBodyRef.current) {
+        resetBodyHighlight(firstSelectedBodyRef.current)
+        firstSelectedBodyRef.current = null
+      }
+
+      firstSelectedPointRef.current = null
+      firstSelectedAnchorRef.current = null
+      pivotAnchorRef.current = null
+    }
+
+    const clearSelectedBody = () => {
+      if (selectedBodyRef.current) {
+        resetBodyHighlight(selectedBodyRef.current)
+        selectedBodyRef.current = null
+      }
+      window.dispatchEvent(new CustomEvent('body-selection-change', { detail: null }))
+    }
+
+    const clearSelectedConstraint = () => {
+      if (selectedConstraintRef.current) {
+        applyConstraintRender(selectedConstraintRef.current, false)
+        selectedConstraintRef.current = null
+      }
+      window.dispatchEvent(new CustomEvent('constraint-selection-change', { detail: {} }))
+    }
+
+    const selectConstraint = (constraint) => {
+      clearSelectedBody()
+      if (selectedConstraintRef.current && selectedConstraintRef.current.id !== constraint.id) {
+        applyConstraintRender(selectedConstraintRef.current, false)
+      }
+
+      selectedConstraintRef.current = constraint
+      applyConstraintRender(constraint, true)
+      window.dispatchEvent(
+        new CustomEvent('constraint-selection-change', {
+          detail: {
+            type: getConstraintType(constraint),
+            length: constraint.maxLength || constraint.length,
+          },
+        })
+      )
+    }
+
+    const findSelectableConstraint = (point) => {
+      const selectable = engine.world.constraints.filter((constraint) => {
+        if (constraint.label === 'Mouse Constraint') return false
+        const type = getConstraintType(constraint)
+        return ['rope', 'spring', 'rod'].includes(type)
+      })
+
+      let closest = null
+      let closestDistance = 12
+
+      selectable.forEach((constraint) => {
+        const start = getConstraintWorldPoint(constraint.bodyA, constraint.pointA)
+        const end = getConstraintWorldPoint(constraint.bodyB, constraint.pointB)
+        const distance = getDistanceToSegment(point, start, end)
+
+        if (distance < closestDistance) {
+          closest = constraint
+          closestDistance = distance
+        }
+      })
+
+      return closest
+    }
+
+    const deleteSelectedConstraint = () => {
+      if (!selectedConstraintRef.current) return false
+
+      const constraintId = selectedConstraintRef.current.id
+      Composite.remove(engine.world, selectedConstraintRef.current)
+      clearSelectedConstraint()
+      socket.emit('remove-constraint', { roomId, id: constraintId })
+      return true
+    }
+
+    const deleteSelectedBody = () => {
+      if (!selectedBodyRef.current) return false
+
+      const bodyId = selectedBodyRef.current.id
+      const attachedConstraints = engine.world.constraints.filter(
+        (constraint) => constraint.bodyA?.id === bodyId || constraint.bodyB?.id === bodyId
+      )
+
+      if (selectedConstraintRef.current && attachedConstraints.some((c) => c.id === selectedConstraintRef.current.id)) {
+        clearSelectedConstraint()
+      }
+
+      Composite.remove(engine.world, attachedConstraints)
+      attachedConstraints.forEach((constraint) => {
+        socket.emit('remove-constraint', { roomId, id: constraint.id })
+      })
+
+      Composite.remove(engine.world, selectedBodyRef.current)
+      clearSelectedBody()
+
+      if (firstSelectedBodyRef.current?.id === bodyId) {
+        clearPendingSelections()
+      }
+
+      socket.emit('remove-body', { roomId, id: bodyId })
+      return true
+    }
+
     // --- KEYBOARD LISTENER FOR UNDO ---
     const handleKeyDown = (e) => {
+      if (
+        (e.key === 'Delete' || e.key === 'Backspace') &&
+        e.target.tagName !== 'INPUT' &&
+        e.target.tagName !== 'TEXTAREA'
+      ) {
+        e.preventDefault()
+        if (deleteSelectedBody()) return
+        deleteSelectedConstraint()
+        return
+      }
+
       // Check for Ctrl+Z or Cmd+Z
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) {
         // Ignore if typing in an input
@@ -161,17 +432,9 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         e.preventDefault();
         
         // Clear active selections
-        if (firstSelectedBodyRef.current) {
-          firstSelectedBodyRef.current.render.lineWidth = 2;
-          firstSelectedBodyRef.current.render.strokeStyle = firstSelectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80';
-          firstSelectedBodyRef.current = null;
-          firstSelectedPointRef.current = null;
-        }
-        if (selectedBodyRef.current) {
-          selectedBodyRef.current.render.lineWidth = 2;
-          selectedBodyRef.current.render.strokeStyle = selectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80';
-          selectedBodyRef.current = null;
-        }
+        clearPendingSelections()
+        clearSelectedBody()
+        clearSelectedConstraint()
 
         if (actionHistory.length > 0) {
           const lastAction = actionHistory.pop();
@@ -261,6 +524,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           const loadedBodies = roomData.bodies.map(b => {
             let newBody;
             const opts = b.options || {};
+            const dimensions = b.dimensions || {};
             if (b.type === 'motor') {
               if (opts.motorType === 'gear') {
                 newBody = createGear(b.x, b.y, opts.gearRadius || 40, opts.gearTeeth || 12, {
@@ -275,7 +539,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
                 newBody.gearRadius = opts.gearRadius || 40;
                 newBody.gearTeeth = opts.gearTeeth || 12;
               } else {
-                newBody = Bodies.rectangle(b.x, b.y, 150, 20, {
+                newBody = Bodies.rectangle(b.x, b.y, dimensions.width || 150, dimensions.height || 20, {
                   id: b.id, isStatic: opts.isMotorized ?? true, angle: b.angle,
                   render: { fillStyle: '#eab308', strokeStyle: '#ca8a04', lineWidth: 2 }
                 });
@@ -285,14 +549,14 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
                 newBody.motorType = 'rod';
               }
             } else if (b.type === 'circle') {
-              newBody = Bodies.circle(b.x, b.y, 30, {
+              newBody = Bodies.circle(b.x, b.y, dimensions.radius || 40, {
                 id: b.id, angle: b.angle, velocity: b.velocity, angularVelocity: b.angularVelocity,
                 restitution: opts.restitution ?? 0.8, friction: opts.friction ?? 0.1, density: opts.density ?? 0.001,
                 render: { fillStyle: '#22c55e', strokeStyle: '#4ade80', lineWidth: 2 }
               });
               Matter.Body.setVelocity(newBody, b.velocity || { x: 0, y: 0 });
             } else {
-              newBody = Bodies.rectangle(b.x, b.y, 60, 60, {
+              newBody = Bodies.rectangle(b.x, b.y, dimensions.width || 80, dimensions.height || 80, {
                 id: b.id, angle: b.angle, velocity: b.velocity, angularVelocity: b.angularVelocity,
                 restitution: opts.restitution ?? 0.6, friction: opts.friction ?? 0.1, density: opts.density ?? 0.001,
                 render: { fillStyle: '#6366f1', strokeStyle: '#818cf8', lineWidth: 2 }
@@ -311,14 +575,14 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
               if (c.type === 'pivot' && bodyA) {
                 const pivot = Constraint.create({
                   id: c.id, bodyA: bodyA, 
-                  pointA: c.pointA || { x: c.x - bodyA.position.x, y: c.y - bodyA.position.y },
+                  pointA: c.pointA || { x: 0, y: 0 },
                   pointB: { x: c.x, y: c.y }, stiffness: 1, length: 0,
                   render: c.hidden ? { visible: false } : { strokeStyle: '#f59e0b', lineWidth: 4 }
                 });
                 Composite.add(engine.world, pivot);
               } else if (c.type === 'spring' || c.type === 'rod' || c.type === 'rope') {
                 const bodyB = Composite.get(engine.world, c.bodyBId, 'body');
-                if (bodyA && bodyB) {
+                if ((bodyA || c.pointA) && bodyB) {
                   const newConstraint = Constraint.create({
                     id: c.id, bodyA: bodyA, bodyB: bodyB, 
                     pointA: c.pointA || { x: 0, y: 0 },
@@ -369,6 +633,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           angle: b.angle,
           velocity: b.velocity,
           angularVelocity: b.angularVelocity,
+          dimensions: getBodyDimensions(b),
           options: b.motorType ? {
             motorType: b.motorType,
             gearRadius: b.gearRadius,
@@ -423,14 +688,20 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
       Composite.remove(engine.world, bodiesToRemove)
       Composite.remove(engine.world, constraintsToRemove)
 
-      // Clear selections
-      if (selectedBodyRef.current) selectedBodyRef.current = null
-      if (firstSelectedBodyRef.current) firstSelectedBodyRef.current = null
+      clearSelectedBody()
+      clearSelectedConstraint()
+      clearPendingSelections()
 
       // Notify other users
       socket.emit('clear-canvas', { roomId })
     };
     window.addEventListener('trigger-clear', handleClear);
+
+    const handleDeleteSelected = () => {
+      if (deleteSelectedBody()) return
+      deleteSelectedConstraint()
+    }
+    window.addEventListener('trigger-delete-selected', handleDeleteSelected)
 
     // --- REAL-TIME MULTIPLAYER SYNC ---
 
@@ -593,6 +864,39 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           context.stroke();
         }
       });
+
+      if (pivotAnchorRef.current) {
+        context.beginPath()
+        context.arc(pivotAnchorRef.current.x, pivotAnchorRef.current.y, 6, 0, Math.PI * 2)
+        context.fillStyle = '#facc15'
+        context.fill()
+
+        context.beginPath()
+        context.moveTo(pivotAnchorRef.current.x, pivotAnchorRef.current.y)
+        context.lineTo(mouse.position.x, mouse.position.y)
+        context.setLineDash([6, 6])
+        context.strokeStyle = '#facc15'
+        context.lineWidth = 2
+        context.stroke()
+        context.setLineDash([])
+      }
+
+      if (firstSelectedAnchorRef.current && ['rope', 'spring', 'rod'].includes(activeToolRef.current)) {
+        const style = getConstraintStrokeStyle(activeToolRef.current)
+        context.beginPath()
+        context.arc(firstSelectedAnchorRef.current.x, firstSelectedAnchorRef.current.y, 5, 0, Math.PI * 2)
+        context.fillStyle = style.strokeStyle
+        context.fill()
+
+        context.beginPath()
+        context.moveTo(firstSelectedAnchorRef.current.x, firstSelectedAnchorRef.current.y)
+        context.lineTo(mouse.position.x, mouse.position.y)
+        context.setLineDash([8, 5])
+        context.strokeStyle = style.strokeStyle
+        context.lineWidth = style.lineWidth
+        context.stroke()
+        context.setLineDash([])
+      }
     })
 
     // C. Handle Click-to-Place (Spawning bodies and constraints)
@@ -606,26 +910,38 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
       // Check if we clicked on an existing body
       const clickedBodies = Query.point(engine.world.bodies, { x, y })
       const clickedBody = clickedBodies.length > 0 ? clickedBodies[0] : null
+      const clickedConstraint = clickedBody ? null : findSelectableConstraint({ x, y })
 
       if (currentTool === 'cursor') {
         if (clickedBody && clickedBody.id !== 999) {
+          clearSelectedConstraint()
           if (selectedBodyRef.current && selectedBodyRef.current.id !== clickedBody.id) {
-            selectedBodyRef.current.render.lineWidth = 2
-            selectedBodyRef.current.render.strokeStyle = selectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
+            resetBodyHighlight(selectedBodyRef.current)
           }
           selectedBodyRef.current = clickedBody
           clickedBody.render.lineWidth = 4
           clickedBody.render.strokeStyle = '#38bdf8' // Highlight blue
+          window.dispatchEvent(
+            new CustomEvent('body-selection-change', {
+              detail: {
+                id: clickedBody.id,
+                restitution: clickedBody.restitution,
+                friction: clickedBody.friction,
+                density: clickedBody.density,
+              },
+            })
+          )
+        } else if (clickedConstraint) {
+          selectConstraint(clickedConstraint)
         } else {
-          // Deselect if clicking empty space
-          if (selectedBodyRef.current) {
-            selectedBodyRef.current.render.lineWidth = 2
-            selectedBodyRef.current.render.strokeStyle = selectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
-            selectedBodyRef.current = null
-          }
+          clearSelectedBody()
+          clearSelectedConstraint()
         }
         return // Let MouseConstraint handle the actual dragging
       }
+
+      clearSelectedBody()
+      clearSelectedConstraint()
 
       const bodyId = Math.floor(Math.random() * 10000000) // Random unique ID
       const currentMaterial = materialRef.current
@@ -640,7 +956,17 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         })
         Composite.add(engine.world, newBody)
         actionHistory.push({ type: 'body', id: bodyId })
-        socket.emit('add-body', { roomId, body: { id: bodyId, type: currentTool, x, y, options: currentMaterial } })
+        socket.emit('add-body', {
+          roomId,
+          body: {
+            id: bodyId,
+            type: currentTool,
+            x,
+            y,
+            options: currentMaterial,
+            dimensions: getBodyDimensions(newBody),
+          },
+        })
 
       } else if (currentTool === 'circle') {
         const newBody = Bodies.circle(x, y, 30, {
@@ -652,7 +978,17 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         })
         Composite.add(engine.world, newBody)
         actionHistory.push({ type: 'body', id: bodyId })
-        socket.emit('add-body', { roomId, body: { id: bodyId, type: currentTool, x, y, options: currentMaterial } })
+        socket.emit('add-body', {
+          roomId,
+          body: {
+            id: bodyId,
+            type: currentTool,
+            x,
+            y,
+            options: currentMaterial,
+            dimensions: getBodyDimensions(newBody),
+          },
+        })
 
       } else if (currentTool === 'motor') {
         let newBody;
@@ -709,6 +1045,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           roomId,
           body: {
             id: bodyId, type: 'motor', x, y,
+            dimensions: getBodyDimensions(newBody),
             options: {
               motorType: newBody.motorType,
               gearRadius: newBody.gearRadius,
@@ -721,16 +1058,17 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         })
 
       } else if (currentTool === 'pivot') {
-        if (clickedBody && clickedBody.id !== 999) {
-          const dx = x - clickedBody.position.x;
-          const dy = y - clickedBody.position.y;
-          const localPoint = { x: dx, y: dy };
+        if (!pivotAnchorRef.current) {
+          pivotAnchorRef.current = { x, y }
+          return
+        }
 
+        if (clickedBody && clickedBody.id !== 999) {
           const pivot = Constraint.create({
             id: bodyId,
             bodyA: clickedBody,
-            pointA: localPoint,
-            pointB: { x, y },
+            pointA: { x: 0, y: 0 },
+            pointB: { ...pivotAnchorRef.current },
             stiffness: 1,
             length: 0,
             render: { strokeStyle: '#f59e0b', lineWidth: 4 }
@@ -739,82 +1077,94 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           actionHistory.push({ type: 'constraint', id: bodyId })
           socket.emit('add-constraint', {
             roomId,
-            constraint: { id: bodyId, type: 'pivot', bodyAId: clickedBody.id, x, y, pointA: localPoint }
+            constraint: {
+              id: bodyId,
+              type: 'pivot',
+              bodyAId: clickedBody.id,
+              x: pivotAnchorRef.current.x,
+              y: pivotAnchorRef.current.y,
+              pointA: { x: 0, y: 0 },
+            }
           })
+          pivotAnchorRef.current = null
+        } else {
+          pivotAnchorRef.current = { x, y }
         }
 
       } else if (currentTool === 'spring' || currentTool === 'rod' || currentTool === 'rope') {
-        if (clickedBody && clickedBody.id !== 999) {
-          if (!firstSelectedBodyRef.current) {
-            // First body selected!
-            firstSelectedBodyRef.current = clickedBody
-            
-            const dx = x - clickedBody.position.x;
-            const dy = y - clickedBody.position.y;
-            firstSelectedPointRef.current = { x: dx, y: dy };
+        const validBody = clickedBody && clickedBody.id !== 999 ? clickedBody : null
 
-            // Visual feedback (thicker border, red)
+        if (!firstSelectedBodyRef.current && !firstSelectedAnchorRef.current) {
+          if (validBody) {
+            firstSelectedBodyRef.current = clickedBody
+            firstSelectedPointRef.current = { x: 0, y: 0 }
+
             clickedBody.render.lineWidth = 5
             clickedBody.render.strokeStyle = '#ef4444'
           } else {
-            // Second body selected!
-            if (firstSelectedBodyRef.current.id !== clickedBody.id) {
-              const dx = x - clickedBody.position.x;
-              const dy = y - clickedBody.position.y;
-              const localPointB = { x: dx, y: dy };
-
-              const pAWorld = Matter.Vector.add(firstSelectedBodyRef.current.position, firstSelectedPointRef.current);
-              const pBWorld = Matter.Vector.add(clickedBody.position, localPointB);
-              const dist = Matter.Vector.magnitude(Matter.Vector.sub(pAWorld, pBWorld));
-
-              const type = currentTool;
-              const stiffness = type === 'rod' ? 1 : (type === 'rope' ? 1 : (currentMaterial.springStiffness || 0.05));
-              const renderOpts = type === 'rod' ? { strokeStyle: '#94a3b8', lineWidth: 5 } : type === 'rope' ? { strokeStyle: '#d97706', lineWidth: 3 } : { strokeStyle: '#ef4444', lineWidth: 3 };
-
-              const newConstraint = Constraint.create({
-                id: bodyId,
-                bodyA: firstSelectedBodyRef.current,
-                pointA: firstSelectedPointRef.current,
-                bodyB: clickedBody,
-                pointB: localPointB,
-                stiffness: stiffness,
-                length: dist,
-                isRope: type === 'rope',
-                maxLength: type === 'rope' ? dist : undefined,
-                render: renderOpts
-              })
-              Composite.add(engine.world, newConstraint)
-              actionHistory.push({ type: 'constraint', id: bodyId })
-              socket.emit('add-constraint', {
-                roomId,
-                constraint: {
-                  id: bodyId, type: type,
-                  bodyAId: firstSelectedBodyRef.current.id,
-                  bodyBId: clickedBody.id,
-                  pointA: firstSelectedPointRef.current,
-                  pointB: localPointB,
-                  stiffness: stiffness,
-                  length: dist,
-                  isRope: type === 'rope',
-                  maxLength: type === 'rope' ? dist : undefined
-                }
-              })
-            }
-            // Reset visual feedback
-            firstSelectedBodyRef.current.render.lineWidth = 2
-            firstSelectedBodyRef.current.render.strokeStyle = firstSelectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
-            firstSelectedBodyRef.current = null
-            firstSelectedPointRef.current = null
+            firstSelectedAnchorRef.current = { x, y }
           }
-        } else {
-          // Clicked empty space, reset selection
-          if (firstSelectedBodyRef.current) {
-            firstSelectedBodyRef.current.render.lineWidth = 2
-            firstSelectedBodyRef.current.render.strokeStyle = firstSelectedBodyRef.current.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
-            firstSelectedBodyRef.current = null
-            firstSelectedPointRef.current = null
-          }
+          return
         }
+
+        if (!validBody) {
+          if (firstSelectedAnchorRef.current) {
+            firstSelectedAnchorRef.current = { x, y }
+          } else {
+            clearPendingSelections()
+          }
+          return
+        }
+
+        if (firstSelectedBodyRef.current && firstSelectedBodyRef.current.id === validBody.id) {
+          clearPendingSelections()
+          return
+        }
+
+        const type = currentTool
+        const renderOpts = getConstraintStrokeStyle(type)
+        const anchorOrBodyPosition = firstSelectedAnchorRef.current || firstSelectedBodyRef.current.position
+        const defaultDistance = Matter.Vector.magnitude(
+          Matter.Vector.sub(anchorOrBodyPosition, validBody.position)
+        )
+        const length =
+          typeof currentMaterial.ropeLength === 'number'
+            ? currentMaterial.ropeLength
+            : defaultDistance
+
+        const newConstraint = Constraint.create({
+          id: bodyId,
+          bodyA: firstSelectedBodyRef.current || undefined,
+          pointA: firstSelectedBodyRef.current ? { x: 0, y: 0 } : { ...firstSelectedAnchorRef.current },
+          bodyB: validBody,
+          pointB: { x: 0, y: 0 },
+          stiffness: type === 'rod' ? 1 : type === 'rope' ? 1 : currentMaterial.springStiffness || 0.05,
+          length,
+          isRope: type === 'rope',
+          maxLength: type === 'rope' ? length : undefined,
+          render: renderOpts,
+        })
+
+        Composite.add(engine.world, newConstraint)
+        actionHistory.push({ type: 'constraint', id: bodyId })
+        socket.emit('add-constraint', {
+          roomId,
+          constraint: {
+            id: bodyId,
+            type,
+            bodyAId: firstSelectedBodyRef.current?.id,
+            bodyBId: validBody.id,
+            pointA: firstSelectedBodyRef.current
+              ? { x: 0, y: 0 }
+              : { ...firstSelectedAnchorRef.current },
+            pointB: { x: 0, y: 0 },
+            stiffness: newConstraint.stiffness,
+            length,
+            isRope: type === 'rope',
+            maxLength: type === 'rope' ? length : undefined,
+          }
+        })
+        clearPendingSelections()
       }
     }
 
@@ -826,9 +1176,10 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     const onAddBody = (data) => {
       let newBody = null
       const opts = data.body.options || {}
+      const dimensions = data.body.dimensions || {}
 
       if (data.body.type === 'box') {
-        newBody = Bodies.rectangle(data.body.x, data.body.y, 60, 60, {
+        newBody = Bodies.rectangle(data.body.x, data.body.y, dimensions.width || 60, dimensions.height || 60, {
           id: data.body.id,
           restitution: opts.restitution ?? 0.6,
           friction: opts.friction ?? 0.1,
@@ -836,7 +1187,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           render: { fillStyle: '#6366f1', strokeStyle: '#818cf8', lineWidth: 2 },
         })
       } else if (data.body.type === 'circle') {
-        newBody = Bodies.circle(data.body.x, data.body.y, 30, {
+        newBody = Bodies.circle(data.body.x, data.body.y, dimensions.radius || 30, {
           id: data.body.id,
           restitution: opts.restitution ?? 0.8,
           friction: opts.friction ?? 0.1,
@@ -858,7 +1209,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           newBody.gearRadius = opts.gearRadius || 40;
           newBody.gearTeeth = opts.gearTeeth || 12;
         } else {
-          newBody = Bodies.rectangle(data.body.x, data.body.y, 150, 20, {
+          newBody = Bodies.rectangle(data.body.x, data.body.y, dimensions.width || 150, dimensions.height || 20, {
             id: data.body.id,
             isStatic: opts.isMotorized ?? true,
             render: { fillStyle: '#eab308', strokeStyle: '#ca8a04', lineWidth: 2 },
@@ -876,6 +1227,28 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     }
     socket.on('add-body', onAddBody)
 
+    const onUpdateBodyProperties = (data) => {
+      const targetBody = Composite.get(engine.world, data.body.id, 'body')
+      if (!targetBody) return
+
+      if (typeof data.body.restitution === 'number') {
+        targetBody.restitution = data.body.restitution
+      }
+
+      if (typeof data.body.friction === 'number') {
+        targetBody.friction = data.body.friction
+      }
+
+      if (
+        typeof data.body.density === 'number' &&
+        !Number.isNaN(data.body.density) &&
+        !targetBody.isStatic
+      ) {
+        Matter.Body.setDensity(targetBody, data.body.density)
+      }
+    }
+    socket.on('update-body-properties', onUpdateBodyProperties)
+
     // E. Receive constraints added by other users
     const onAddConstraint = (data) => {
       const c = data.constraint
@@ -885,7 +1258,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         const pivot = Constraint.create({
           id: c.id,
           bodyA: bodyA,
-          pointA: c.pointA || { x: c.x - bodyA.position.x, y: c.y - bodyA.position.y },
+          pointA: c.pointA || { x: 0, y: 0 },
           pointB: { x: c.x, y: c.y },
           stiffness: 1,
           length: 0,
@@ -894,7 +1267,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
         Composite.add(engine.world, pivot)
       } else if (c.type === 'spring' || c.type === 'rod' || c.type === 'rope') {
         const bodyB = Composite.get(engine.world, c.bodyBId, 'body')
-        if (bodyA && bodyB) {
+        if ((bodyA || c.pointA) && bodyB) {
           const newConstraint = Constraint.create({
             id: c.id,
             bodyA: bodyA,
@@ -913,14 +1286,40 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     }
     socket.on('add-constraint', onAddConstraint)
 
+    const onUpdateConstraint = (data) => {
+      const targetConstraint = engine.world.constraints.find((constraint) => constraint.id === data.constraint.id)
+      if (!targetConstraint) return
+
+      if (typeof data.constraint.length === 'number') {
+        targetConstraint.length = data.constraint.length
+      }
+
+      if (typeof data.constraint.maxLength === 'number') {
+        targetConstraint.maxLength = data.constraint.maxLength
+      }
+
+      if (selectedConstraintRef.current?.id === targetConstraint.id) {
+        window.dispatchEvent(
+          new CustomEvent('constraint-selection-change', {
+            detail: {
+              type: getConstraintType(targetConstraint),
+              length: targetConstraint.maxLength || targetConstraint.length,
+            },
+          })
+        )
+      }
+    }
+    socket.on('update-constraint', onUpdateConstraint)
+
     // K. Receive clear canvas event from other users
     const onClearCanvas = () => {
       const bodiesToRemove = engine.world.bodies.filter(b => b.id !== 999)
       const constraintsToRemove = engine.world.constraints.filter(c => c.label !== 'Mouse Constraint')
       Composite.remove(engine.world, bodiesToRemove)
       Composite.remove(engine.world, constraintsToRemove)
-      if (selectedBodyRef.current) selectedBodyRef.current = null
-      if (firstSelectedBodyRef.current) firstSelectedBodyRef.current = null
+      clearSelectedBody()
+      clearSelectedConstraint()
+      clearPendingSelections()
     }
     socket.on('clear-canvas', onClearCanvas)
 
@@ -928,8 +1327,17 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     const onRemoveBody = (data) => {
       const bodyToRemove = engine.world.bodies.find(b => b.id === data.id)
       if (bodyToRemove) {
+        if (selectedBodyRef.current?.id === data.id) {
+          clearSelectedBody()
+        }
+        if (firstSelectedBodyRef.current?.id === data.id) {
+          clearPendingSelections()
+        }
         Composite.remove(engine.world, bodyToRemove)
         const constraintsToRemove = engine.world.constraints.filter(c => c.bodyA?.id === data.id || c.bodyB?.id === data.id)
+        if (selectedConstraintRef.current && constraintsToRemove.some((constraint) => constraint.id === selectedConstraintRef.current.id)) {
+          clearSelectedConstraint()
+        }
         Composite.remove(engine.world, constraintsToRemove)
       }
     }
@@ -938,6 +1346,9 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     const onRemoveConstraint = (data) => {
       const constraintToRemove = engine.world.constraints.find(c => c.id === data.id)
       if (constraintToRemove) {
+        if (selectedConstraintRef.current?.id === data.id) {
+          clearSelectedConstraint()
+        }
         Composite.remove(engine.world, constraintToRemove)
       }
     }
@@ -963,7 +1374,9 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     return () => {
       socket.off('physics-update', onPhysicsUpdate)
       socket.off('add-body', onAddBody)
+      socket.off('update-body-properties', onUpdateBodyProperties)
       socket.off('add-constraint', onAddConstraint)
+      socket.off('update-constraint', onUpdateConstraint)
       socket.off('clear-canvas', onClearCanvas)
       socket.off('remove-body', onRemoveBody)
       socket.off('remove-constraint', onRemoveConstraint)
@@ -972,6 +1385,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('trigger-save', handleSave)
       window.removeEventListener('trigger-clear', handleClear)
+      window.removeEventListener('trigger-delete-selected', handleDeleteSelected)
       Render.stop(render)
       Runner.stop(runner)
       Engine.clear(engine)
