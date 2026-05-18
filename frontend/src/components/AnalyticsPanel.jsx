@@ -1,86 +1,163 @@
 import { useState, useEffect } from 'react'
-import { LineChart, Line, YAxis, ResponsiveContainer } from 'recharts'
+import { LineChart, Line, YAxis, XAxis, ResponsiveContainer, ReferenceLine } from 'recharts'
+
+function MetricRow({ label, symbol, value, color = 'var(--color-lab-accent)' }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <span style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>{label}</span>
+        {symbol && (
+          <span style={{ fontSize: '10px', fontStyle: 'italic', fontFamily: 'Georgia, serif', color: 'var(--color-lab-text-subtle)' }}>
+            ({symbol})
+          </span>
+        )}
+      </div>
+      <span style={{
+        fontFamily: 'JetBrains Mono, monospace',
+        fontSize: '12px',
+        fontWeight: 500,
+        color,
+        background: 'var(--color-lab-surface-alt)',
+        padding: '1px 8px',
+        borderRadius: '5px',
+        border: '1px solid var(--color-lab-border-light)',
+        minWidth: '48px',
+        textAlign: 'right',
+      }}>{value}</span>
+    </div>
+  )
+}
 
 export default function AnalyticsPanel() {
   const [metrics, setMetrics] = useState({ bodies: 0, fps: 0, telemetry: null })
   const [history, setHistory] = useState([])
 
   useEffect(() => {
-    // Listen to custom event fired by the physics engine every few frames
     const handleMetrics = (e) => {
       setMetrics(e.detail)
-      
-      // Update chart history if we have telemetry
+
       if (e.detail.telemetry) {
         setHistory(prev => {
-          // Parse the string back to a float for the chart
           const newEnergy = parseFloat(e.detail.telemetry.energy)
-          // Add the new data point
-          const nextHistory = [...prev, { time: Date.now(), energy: newEnergy }]
-          // Keep only the last 60 frames (approx 1 second) so the chart scrolls
-          if (nextHistory.length > 60) return nextHistory.slice(nextHistory.length - 60)
+          const nextHistory = [...prev, { t: prev.length, energy: newEnergy }]
+          if (nextHistory.length > 80) return nextHistory.slice(nextHistory.length - 80)
           return nextHistory
         })
       } else {
-        // Reset chart if they deselect the body
         setHistory(prev => prev.length > 0 ? [] : prev)
       }
     }
 
     window.addEventListener('physics-metrics', handleMetrics)
-    
     return () => window.removeEventListener('physics-metrics', handleMetrics)
   }, [])
 
+  const fpsColor = metrics.fps >= 55 ? 'var(--color-lab-success)'
+    : metrics.fps >= 30 ? 'var(--color-lab-warning)'
+    : 'var(--color-lab-danger)'
+
   return (
-    <div className="absolute bottom-4 right-4 bg-lab-surface border border-lab-border rounded-xl shadow-2xl p-5 w-72 z-10 text-sm">
-      <h3 className="text-lab-text font-semibold mb-3 border-b border-lab-border pb-2 flex justify-between items-center">
-        <span>📊 Live Analytics</span>
-        <span className="flex h-2 w-2 relative">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-lab-success opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2 w-2 bg-lab-success"></span>
-        </span>
-      </h3>
-      
-      <div className="flex justify-between mb-2">
-        <span className="text-lab-text-muted">FPS</span>
-        <span className="text-lab-success font-mono bg-lab-bg px-2 rounded">{metrics.fps}</span>
-      </div>
-      
-      <div className="flex justify-between">
-        <span className="text-lab-text-muted">Active Bodies</span>
-        <span className="text-lab-accent-light font-mono bg-lab-bg px-2 rounded">{metrics.bodies}</span>
+    <div
+      className="w-full h-full p-4"
+      id="analytics-panel"
+    >
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '12px',
+        paddingBottom: '10px',
+        borderBottom: '1px solid var(--color-lab-border-light)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+          <div style={{
+            width: '26px', height: '26px', borderRadius: '6px',
+            background: 'var(--color-lab-accent-dim)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+              <polyline points="1,11 4,7 7,9 10,4 13,2" stroke="#1e6fe8" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-lab-text)' }}>Live Analytics</div>
+            <div style={{ fontSize: '10px', color: 'var(--color-lab-text-muted)' }}>Engine telemetry</div>
+          </div>
+        </div>
+        {/* Live dot */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <span className="animate-pulse-dot" style={{
+            display: 'inline-block', width: '6px', height: '6px',
+            borderRadius: '50%', background: 'var(--color-lab-success)',
+          }} />
+          <span style={{ fontSize: '9px', fontWeight: 600, color: 'var(--color-lab-success)', letterSpacing: '0.06em' }}>LIVE</span>
+        </div>
       </div>
 
-      {/* Physics Telemetry for Selected Body */}
-      {metrics.telemetry && (
-        <div className="mt-4 pt-4 border-t border-lab-border">
-          <h4 className="text-xs font-semibold text-lab-text-muted mb-3 uppercase tracking-wider">Telemetry</h4>
-          <div className="flex justify-between mb-2">
-            <span className="text-lab-text-muted">Speed</span>
-            <span className="text-lab-accent-light font-mono bg-lab-bg px-2 rounded">{metrics.telemetry.speed}</span>
+      {/* Core metrics */}
+      <MetricRow label="Frame Rate" symbol="fps" value={metrics.fps} color={fpsColor} />
+      <MetricRow label="Bodies" symbol="n" value={metrics.bodies} />
+
+      {/* Separator */}
+      <div style={{ height: '1px', background: 'var(--color-lab-border-light)', margin: '8px 0' }} />
+
+      {/* Telemetry section */}
+      {metrics.telemetry ? (
+        <div className="animate-fade-in">
+          <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--color-lab-text-muted)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '8px' }}>
+            Selected Body
           </div>
-          <div className="flex justify-between mb-3">
-            <span className="text-lab-text-muted">Energy (KE)</span>
-            <span className="text-lab-danger font-mono bg-lab-bg px-2 rounded">{metrics.telemetry.energy}</span>
-          </div>
-          
-          {/* Live Chart using Recharts */}
-          <div className="h-20 w-full mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={history}>
-                <YAxis hide domain={['dataMin', 'dataMax']} />
-                <Line 
-                  type="monotone" 
-                  dataKey="energy" 
-                  stroke="#ef4444" 
-                  strokeWidth={2} 
-                  dot={false} 
-                  isAnimationActive={false} 
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+
+          <MetricRow label="Speed" symbol="|v|" value={`${metrics.telemetry.speed} m/s`} color="var(--color-lab-accent)" />
+          <MetricRow label="Kinetic Energy" symbol="½mv²" value={`${metrics.telemetry.energy} J`} color="var(--color-lab-danger)" />
+
+          {/* KE chart */}
+          {history.length > 2 && (
+            <div style={{ marginTop: '12px' }}>
+              <div style={{ fontSize: '10px', color: 'var(--color-lab-text-muted)', marginBottom: '6px', fontWeight: 500 }}>
+                KE over time
+              </div>
+              <div style={{
+                height: '64px',
+                background: 'var(--color-lab-surface-alt)',
+                borderRadius: '8px',
+                border: '1px solid var(--color-lab-border-light)',
+                padding: '6px 4px 4px',
+                overflow: 'hidden',
+              }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={history} margin={{ top: 2, right: 4, bottom: 2, left: 4 }}>
+                    <YAxis hide domain={['dataMin - 1', 'dataMax + 1']} />
+                    <Line
+                      type="monotone"
+                      dataKey="energy"
+                      stroke="#dc2626"
+                      strokeWidth={1.5}
+                      dot={false}
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div style={{
+          padding: '12px',
+          background: 'var(--color-lab-surface-alt)',
+          borderRadius: '8px',
+          border: '1px dashed var(--color-lab-border)',
+          textAlign: 'center',
+        }}>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" style={{ margin: '0 auto 6px' }}>
+            <circle cx="12" cy="12" r="9" stroke="var(--color-lab-text-subtle)" strokeWidth="1.5"/>
+            <path d="M12 8v4M12 16h.01" stroke="var(--color-lab-text-subtle)" strokeWidth="1.5" strokeLinecap="round"/>
+          </svg>
+          <p style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', margin: 0, lineHeight: 1.5 }}>
+            Click a body to<br/>view telemetry
+          </p>
         </div>
       )}
     </div>

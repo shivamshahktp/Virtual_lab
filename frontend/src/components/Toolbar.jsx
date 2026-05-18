@@ -1,19 +1,79 @@
 import { useState } from 'react'
 
+const tools = [
+  { id: 'cursor',  icon: 'cursor',   label: 'Select & Drag',   shortcut: 'V', desc: 'Move and select objects' },
+  { id: 'box',     icon: 'box',      label: 'Box',             shortcut: 'B', desc: 'Place a rectangular body' },
+  { id: 'circle',  icon: 'circle',   label: 'Circle',          shortcut: 'C', desc: 'Place a circular body' },
+  { id: 'pivot',   icon: 'pivot',    label: 'Pin Pivot',       shortcut: 'P', desc: 'Anchor body to a fixed point' },
+  { id: 'spring',  icon: 'spring',   label: 'Spring',          shortcut: 'S', desc: 'Elastic constraint' },
+  { id: 'rod',     icon: 'rod',      label: 'Rigid Rod',       shortcut: 'R', desc: 'Fixed-length connection' },
+  { id: 'rope',    icon: 'rope',     label: 'Rope',            shortcut: 'O', desc: 'Slack-capable rope' },
+  { id: 'motor',   icon: 'motor',    label: 'Motor / Gear',    shortcut: 'M', desc: 'Motorized spinning body' },
+]
+
+function ToolIcon({ type, active }) {
+  const color = active ? '#1e6fe8' : '#64748b'
+  const icons = {
+    cursor: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M3 2l11 7-5 1-2 5L3 2z" stroke={color} strokeWidth="1.6" strokeLinejoin="round"/>
+      </svg>
+    ),
+    box: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <rect x="3" y="3" width="12" height="12" rx="2" stroke={color} strokeWidth="1.6"/>
+      </svg>
+    ),
+    circle: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <circle cx="9" cy="9" r="6" stroke={color} strokeWidth="1.6"/>
+      </svg>
+    ),
+    pivot: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <circle cx="9" cy="5" r="2.5" stroke={color} strokeWidth="1.6"/>
+        <line x1="9" y1="7.5" x2="9" y2="15" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+        <line x1="6" y1="15" x2="12" y2="15" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+    spring: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M9 2v2M9 4c-2 1-2 2 0 3s2 2 0 3-2 2 0 3M9 13v3" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+    rod: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <line x1="3" y1="9" x2="15" y2="9" stroke={color} strokeWidth="2.5" strokeLinecap="round"/>
+        <circle cx="3" cy="9" r="2" fill={color}/>
+        <circle cx="15" cy="9" r="2" fill={color}/>
+      </svg>
+    ),
+    rope: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M3 4c4 0 4 10 8 10s4-10 8-10" stroke={color} strokeWidth="1.6" strokeLinecap="round" fill="none" transform="scale(0.7) translate(2,2)"/>
+        <path d="M3 6Q6 12 9 12Q12 12 15 6" stroke={color} strokeWidth="1.6" strokeLinecap="round" fill="none"/>
+        <circle cx="3" cy="6" r="1.5" fill={color}/>
+        <circle cx="15" cy="6" r="1.5" fill={color}/>
+      </svg>
+    ),
+    motor: (
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <circle cx="9" cy="9" r="6" stroke={color} strokeWidth="1.6"/>
+        <circle cx="9" cy="9" r="2" fill={color}/>
+        <line x1="9" y1="3" x2="9" y2="5" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+        <line x1="9" y1="13" x2="9" y2="15" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+        <line x1="3" y1="9" x2="5" y2="9" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+        <line x1="13" y1="9" x2="15" y2="9" stroke={color} strokeWidth="1.6" strokeLinecap="round"/>
+      </svg>
+    ),
+  }
+  return icons[type] || null
+}
+
 export default function Toolbar({ activeTool, setActiveTool, material, setMaterial }) {
   const [showSpringMenu, setShowSpringMenu] = useState(false)
   const [showMotorMenu, setShowMotorMenu] = useState(false)
-
-  const tools = [
-    { id: 'cursor', icon: '👉', label: 'Select / Drag' },
-    { id: 'box', icon: '🟥', label: 'Spawn Box' },
-    { id: 'circle', icon: '🟢', label: 'Spawn Circle' },
-    { id: 'pivot', icon: '📌', label: 'Pin / Pivot (Click anchor, then body center)' },
-    { id: 'spring', icon: '〰️', label: 'Spring (Click anchor/body, then body) - Right-Click to adjust stiffness' },
-    { id: 'rod', icon: '🦯', label: 'Rigid Rod (Click 2 bodies)' },
-    { id: 'rope', icon: '🪢', label: 'Rope (Click anchor/body, then body)' },
-    { id: 'motor', icon: '⚙️', label: 'Spawn Motor/Gear (Right-Click for Settings)' },
-  ]
+  const [tooltip, setTooltip] = useState(null)
 
   const handleContextMenu = (e, toolId) => {
     if (toolId === 'spring') {
@@ -30,206 +90,233 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
   }
 
   return (
-    <div className="absolute top-4 left-4 z-10 flex gap-4 items-start">
-      <div className="bg-lab-surface border border-lab-border rounded-xl shadow-2xl p-2 flex flex-col gap-2">
-        {tools.map((tool) => (
-          <button
-            key={tool.id}
-            onClick={() => {
-              setActiveTool(tool.id)
-              if (tool.id !== 'spring') setShowSpringMenu(false)
-              if (tool.id !== 'motor') setShowMotorMenu(false)
-            }}
-            onContextMenu={(e) => handleContextMenu(e, tool.id)}
-            title={tool.label}
-            className={`
-              w-12 h-12 rounded-lg flex items-center justify-center text-2xl
-              transition-all duration-200 border cursor-pointer
-              ${
-                activeTool === tool.id
-                  ? 'bg-lab-accent/20 border-lab-accent text-white shadow-[0_0_15px_rgba(99,102,241,0.2)]'
-                  : 'bg-transparent border-transparent text-lab-text-muted hover:bg-lab-surface-light hover:text-white'
-              }
-            `}
-          >
-            {tool.icon}
-          </button>
-        ))}
+    <div className="absolute top-0 left-0 h-full w-[60px] border-r border-gray-200 bg-white flex flex-col items-center py-2 z-10">
+
+      {/* ── Tool Sidebar ── */}
+      <div className="flex flex-col gap-2 w-full px-2" style={{ width: '100%' }}>
+
+        {/* Logo divider top */}
+        <div style={{ padding: '4px 6px 6px', borderBottom: '1px solid var(--color-lab-border-light)', marginBottom: '4px' }}>
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="8" fill="#1e6fe8" opacity="0.08"/>
+            <path d="M11 7h10M12 7v8l-5 9a1 1 0 00.9 1.5h16.2A1 1 0 0025 24l-5-9V7" stroke="#1e6fe8" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+            <circle cx="14.5" cy="21" r="1.2" fill="#1e6fe8"/>
+            <circle cx="18" cy="23" r="1" fill="#3b82f6"/>
+          </svg>
+        </div>
+
+        {tools.map((tool) => {
+          const isActive = activeTool === tool.id
+          return (
+            <div key={tool.id} style={{ position: 'relative' }}>
+              <button
+                id={`tool-${tool.id}`}
+                onClick={() => {
+                  setActiveTool(tool.id)
+                  if (tool.id !== 'spring') setShowSpringMenu(false)
+                  if (tool.id !== 'motor') setShowMotorMenu(false)
+                }}
+                onContextMenu={(e) => handleContextMenu(e, tool.id)}
+                onMouseEnter={() => setTooltip(tool.id)}
+                onMouseLeave={() => setTooltip(null)}
+                title={tool.label}
+                style={{
+                  width: '38px',
+                  height: '38px',
+                  borderRadius: '8px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  border: isActive ? '1.5px solid var(--color-lab-accent)' : '1.5px solid transparent',
+                  background: isActive ? 'var(--color-lab-accent-dim)' : 'transparent',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  boxShadow: isActive ? '0 0 0 3px rgba(30,111,232,0.1)' : 'none',
+                  position: 'relative',
+                }}
+              >
+                <ToolIcon type={tool.icon} active={isActive} />
+                {/* Active indicator dot */}
+                {isActive && (
+                  <span style={{
+                    position: 'absolute',
+                    bottom: '3px',
+                    right: '3px',
+                    width: '4px',
+                    height: '4px',
+                    borderRadius: '50%',
+                    background: 'var(--color-lab-accent)',
+                  }} />
+                )}
+              </button>
+
+              {/* Tooltip */}
+              {tooltip === tool.id && (
+                <div style={{
+                  position: 'absolute',
+                  left: '46px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'var(--color-lab-text)',
+                  color: '#fff',
+                  padding: '5px 10px',
+                  borderRadius: '7px',
+                  fontSize: '11px',
+                  fontWeight: 500,
+                  whiteSpace: 'nowrap',
+                  pointerEvents: 'none',
+                  zIndex: 100,
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+                }}>
+                  <div>{tool.label}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '10px', marginTop: '1px' }}>{tool.desc}</div>
+                  <div style={{
+                    position: 'absolute', right: '100%', top: '50%', transform: 'translateY(-50%)',
+                    width: 0, height: 0,
+                    borderTop: '5px solid transparent',
+                    borderBottom: '5px solid transparent',
+                    borderRight: '5px solid var(--color-lab-text)'
+                  }} />
+                </div>
+              )}
+            </div>
+          )
+        })}
+
+        {/* Shortcut hint at bottom */}
+        <div style={{ padding: '6px 0 2px', borderTop: '1px solid var(--color-lab-border-light)', marginTop: '4px', textAlign: 'center' }}>
+          <span style={{ fontSize: '9px', color: 'var(--color-lab-text-subtle)', letterSpacing: '0.04em' }}>TOOLS</span>
+        </div>
       </div>
 
+      {/* ── Spring Settings Flyout ── */}
       {showSpringMenu && (
-        <div className="bg-lab-surface border border-lab-border rounded-xl shadow-2xl p-4 flex flex-col gap-4 min-w-[220px]">
-          <div className="flex justify-between items-center border-b border-lab-border pb-2">
-            <h3 className="text-sm font-semibold text-lab-text">Spring Settings</h3>
-            <button
-              onClick={() => setShowSpringMenu(false)}
-              className="text-lab-text-muted hover:text-white transition-colors"
-            >
-              ×
-            </button>
+        <div className="sci-panel animate-fade-in" style={{ padding: '14px', minWidth: '210px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--color-lab-border-light)' }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-lab-text)', letterSpacing: '0.03em' }}>Spring Settings</div>
+              <div style={{ fontSize: '10px', color: 'var(--color-lab-text-muted)' }}>Hooke's Law — F = kx</div>
+            </div>
+            <button onClick={() => setShowSpringMenu(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-lab-text-muted)', fontSize: '16px', lineHeight: 1, padding: '2px 4px' }}>×</button>
           </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-xs text-lab-text-muted flex justify-between">
-              <span>Stiffness (k)</span>
-              <span className="text-lab-accent-light font-mono">
-                {material?.springStiffness || 0.05}
-              </span>
-            </label>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+              <label style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>Stiffness (k)</label>
+              <span className="sci-chip">{material?.springStiffness || 0.05}</span>
+            </div>
             <input
-              type="range"
-              min="0.001"
-              max="0.5"
-              step="0.001"
+              type="range" min="0.001" max="0.5" step="0.001"
               value={material?.springStiffness || 0.05}
-              onChange={(e) =>
-                setMaterial({ ...material, springStiffness: parseFloat(e.target.value) })
-              }
-              className="w-full accent-lab-accent"
+              onChange={(e) => setMaterial({ ...material, springStiffness: parseFloat(e.target.value) })}
+              style={{ width: '100%' }}
             />
-            <p className="text-[10px] text-lab-text-muted mt-1 leading-tight">
-              Higher stiffness makes the spring harder to stretch.
+            <p style={{ fontSize: '10px', color: 'var(--color-lab-text-subtle)', marginTop: '6px', lineHeight: 1.5 }}>
+              Higher stiffness = harder to stretch
             </p>
           </div>
         </div>
       )}
 
+      {/* ── Motor Settings Flyout ── */}
       {showMotorMenu && (
-        <div className="bg-lab-surface border border-lab-border rounded-xl shadow-2xl p-4 flex flex-col gap-4 min-w-[240px]">
-          <div className="flex justify-between items-center border-b border-lab-border pb-2">
-            <h3 className="text-sm font-semibold text-lab-text">Motor / Gear Settings</h3>
-            <button
-              onClick={() => setShowMotorMenu(false)}
-              className="text-lab-text-muted hover:text-white transition-colors"
-            >
-              ×
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <div className="flex gap-2 bg-lab-surface-light p-1 rounded-lg">
-              <button
-                onClick={() => setMaterial({ ...material, motorType: 'gear' })}
-                className={`flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors ${
-                  material?.motorType !== 'rod'
-                    ? 'bg-lab-accent text-white shadow-md'
-                    : 'text-lab-text-muted hover:text-lab-text'
-                }`}
-              >
-                ⚙️ Gear
-              </button>
-              <button
-                onClick={() => setMaterial({ ...material, motorType: 'rod' })}
-                className={`flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors ${
-                  material?.motorType === 'rod'
-                    ? 'bg-lab-accent text-white shadow-md'
-                    : 'text-lab-text-muted hover:text-lab-text'
-                }`}
-              >
-                🏏 Rod
-              </button>
+        <div className="sci-panel animate-fade-in" style={{ padding: '14px', minWidth: '228px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--color-lab-border-light)' }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-lab-text)' }}>Motor / Gear</div>
+              <div style={{ fontSize: '10px', color: 'var(--color-lab-text-muted)' }}>Rotational actuator settings</div>
             </div>
-
-            <label className="flex items-center gap-2 cursor-pointer group">
-              <input
-                type="checkbox"
-                checked={material?.isMotorized ?? true}
-                onChange={(e) => setMaterial({ ...material, isMotorized: e.target.checked })}
-                className="w-4 h-4 rounded accent-lab-accent bg-lab-surface border-lab-border"
-              />
-              <span className="text-sm text-lab-text group-hover:text-white transition-colors">
-                Is Motorized? (Spins by itself)
-              </span>
-            </label>
-
-            {(material?.isMotorized ?? true) && (
-              <div className="flex flex-col gap-3">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-lab-text-muted flex justify-between">
-                    <span>Speed</span>
-                    <span className="text-lab-accent-light font-mono">
-                      {material?.motorSpeed || 0.05}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min="0.01"
-                    max="0.2"
-                    step="0.01"
-                    value={material?.motorSpeed || 0.05}
-                    onChange={(e) =>
-                      setMaterial({ ...material, motorSpeed: parseFloat(e.target.value) })
-                    }
-                    className="w-full accent-lab-accent"
-                  />
-                </div>
-                <div className="flex gap-2 bg-lab-surface-light p-1 rounded-lg">
-                  <button
-                    onClick={() => setMaterial({ ...material, motorDirection: 'clockwise' })}
-                    className={`flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors ${
-                      (material?.motorDirection || 'clockwise') === 'clockwise'
-                        ? 'bg-lab-accent text-white shadow-md'
-                        : 'text-lab-text-muted hover:text-lab-text'
-                    }`}
-                  >
-                    ↻ Clockwise
-                  </button>
-                  <button
-                    onClick={() => setMaterial({ ...material, motorDirection: 'anticlockwise' })}
-                    className={`flex-1 text-xs py-1.5 rounded-md font-semibold transition-colors ${
-                      material?.motorDirection === 'anticlockwise'
-                        ? 'bg-lab-accent text-white shadow-md'
-                        : 'text-lab-text-muted hover:text-lab-text'
-                    }`}
-                  >
-                    ↺ Anti-CW
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {material?.motorType !== 'rod' && (
-              <>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-lab-text-muted flex justify-between">
-                    <span>Radius</span>
-                    <span className="text-lab-accent-light font-mono">
-                      {material?.gearRadius || 40}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min="20"
-                    max="100"
-                    step="5"
-                    value={material?.gearRadius || 40}
-                    onChange={(e) =>
-                      setMaterial({ ...material, gearRadius: parseInt(e.target.value, 10) })
-                    }
-                    className="w-full accent-lab-accent"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs text-lab-text-muted flex justify-between">
-                    <span>Teeth Count</span>
-                    <span className="text-lab-accent-light font-mono">
-                      {material?.gearTeeth || 12}
-                    </span>
-                  </label>
-                  <input
-                    type="range"
-                    min="4"
-                    max="32"
-                    step="2"
-                    value={material?.gearTeeth || 12}
-                    onChange={(e) =>
-                      setMaterial({ ...material, gearTeeth: parseInt(e.target.value, 10) })
-                    }
-                    className="w-full accent-lab-accent"
-                  />
-                </div>
-              </>
-            )}
+            <button onClick={() => setShowMotorMenu(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-lab-text-muted)', fontSize: '16px', lineHeight: 1, padding: '2px 4px' }}>×</button>
           </div>
+
+          {/* Type toggle */}
+          <div style={{ display: 'flex', gap: '4px', background: 'var(--color-lab-surface-alt)', padding: '3px', borderRadius: '8px', marginBottom: '12px' }}>
+            {['gear', 'rod'].map(type => (
+              <button
+                key={type}
+                onClick={() => setMaterial({ ...material, motorType: type })}
+                style={{
+                  flex: 1, fontSize: '11px', fontWeight: 600, padding: '5px',
+                  borderRadius: '6px', cursor: 'pointer', border: 'none',
+                  background: (material?.motorType === type || (type === 'gear' && !material?.motorType)) ? 'var(--color-lab-accent)' : 'transparent',
+                  color: (material?.motorType === type || (type === 'gear' && !material?.motorType)) ? '#fff' : 'var(--color-lab-text-muted)',
+                  transition: 'all 0.15s',
+                }}
+              >
+                {type === 'gear' ? '⚙ Gear' : '▬ Rod'}
+              </button>
+            ))}
+          </div>
+
+          {/* Motorized toggle */}
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={material?.isMotorized ?? true}
+              onChange={(e) => setMaterial({ ...material, isMotorized: e.target.checked })}
+              style={{ width: '14px', height: '14px', accentColor: 'var(--color-lab-accent)', cursor: 'pointer' }}
+            />
+            <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--color-lab-text)' }}>Self-motorized (auto-spins)</span>
+          </label>
+
+          {(material?.isMotorized ?? true) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>Speed (ω)</label>
+                  <span className="sci-chip">{material?.motorSpeed || 0.05}</span>
+                </div>
+                <input type="range" min="0.01" max="0.2" step="0.01"
+                  value={material?.motorSpeed || 0.05}
+                  onChange={(e) => setMaterial({ ...material, motorSpeed: parseFloat(e.target.value) })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '4px', background: 'var(--color-lab-surface-alt)', padding: '3px', borderRadius: '8px' }}>
+                {['clockwise', 'anticlockwise'].map(dir => (
+                  <button
+                    key={dir}
+                    onClick={() => setMaterial({ ...material, motorDirection: dir })}
+                    style={{
+                      flex: 1, fontSize: '10px', fontWeight: 600, padding: '5px 4px',
+                      borderRadius: '6px', cursor: 'pointer', border: 'none',
+                      background: (material?.motorDirection || 'clockwise') === dir ? 'var(--color-lab-accent)' : 'transparent',
+                      color: (material?.motorDirection || 'clockwise') === dir ? '#fff' : 'var(--color-lab-text-muted)',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    {dir === 'clockwise' ? '↻ CW' : '↺ CCW'}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {material?.motorType !== 'rod' && (
+            <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px solid var(--color-lab-border-light)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>Radius (r)</label>
+                  <span className="sci-chip">{material?.gearRadius || 40}</span>
+                </div>
+                <input type="range" min="20" max="100" step="5"
+                  value={material?.gearRadius || 40}
+                  onChange={(e) => setMaterial({ ...material, gearRadius: parseInt(e.target.value, 10) })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>Teeth (n)</label>
+                  <span className="sci-chip">{material?.gearTeeth || 12}</span>
+                </div>
+                <input type="range" min="4" max="32" step="2"
+                  value={material?.gearTeeth || 12}
+                  onChange={(e) => setMaterial({ ...material, gearTeeth: parseInt(e.target.value, 10) })}
+                  style={{ width: '100%' }}
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

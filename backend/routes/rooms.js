@@ -1,14 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const Room = require('../models/Room');
+const auth = require('../middleware/auth');
 
 // POST /api/rooms - Create a new room with a random 6-character code
-router.post('/', async (req, res) => {
+router.post('/', auth, async (req, res) => {
   try {
     // Generate a random 6-character alphanumeric code (e.g., "X7B9QA")
     const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     
-    const room = new Room({ roomId: newRoomId });
+    const room = new Room({ 
+      roomId: newRoomId,
+      ownerId: req.user.userId 
+    });
     await room.save();
     
     res.status(201).json(room);
@@ -38,6 +42,27 @@ router.get('/', async (req, res) => {
   } catch (error) {
     console.error('Error fetching room gallery:', error);
     res.status(500).json({ error: 'Failed to fetch gallery' });
+  }
+});
+
+// GET /api/rooms/my-experiments - Fetch saved rooms exclusively owned by the user
+router.get('/my-experiments', auth, async (req, res) => {
+  try {
+    const rooms = await Room.find({ ownerId: req.user.userId, 'bodies.0': { $exists: true } })
+      .select('roomId createdAt bodies constraints')
+      .sort({ createdAt: -1 });
+    
+    const gallery = rooms.map(r => ({
+      roomId: r.roomId,
+      createdAt: r.createdAt,
+      bodyCount: r.bodies.length,
+      constraintCount: r.constraints.length
+    }));
+
+    res.status(200).json(gallery);
+  } catch (error) {
+    console.error('Error fetching user experiments:', error);
+    res.status(500).json({ error: 'Failed to fetch experiments' });
   }
 });
 

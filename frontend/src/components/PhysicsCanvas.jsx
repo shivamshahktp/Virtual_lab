@@ -110,14 +110,20 @@ const getDistanceToSegment = (point, start, end) => {
 
 const resetBodyHighlight = (body) => {
   if (!body?.render) return
-  body.render.lineWidth = 2
-  body.render.strokeStyle = body.render.fillStyle === '#6366f1' ? '#818cf8' : '#4ade80'
+  body.render.lineWidth = 1.5
+  // Restore appropriate stroke for each body color
+  if (body.render.fillStyle === '#6366f1') body.render.strokeStyle = '#4f46e5'
+  else if (body.render.fillStyle === '#22c55e') body.render.strokeStyle = '#16a34a'
+  else if (body.render.fillStyle === '#eab308') body.render.strokeStyle = '#ca8a04'
+  else if (body.render.fillStyle === '#94a3b8') body.render.strokeStyle = '#64748b'
+  else body.render.strokeStyle = '#94a3b8'
 }
 
-export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }) {
+export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, vectorSettings, simSpeed }) {
   const canvasRef = useRef(null)
   const engineRef = useRef(null)
   const runnerRef = useRef(null)
+  const renderRef = useRef(null)
 
   // Use a ref for activeTool so we don't have to restart the physics engine every time the tool changes
   const activeToolRef = useRef(activeTool)
@@ -132,6 +138,22 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
   const pivotAnchorRef = useRef(null)
   // Ref for material settings
   const materialRef = useRef(material || { restitution: 0.6, friction: 0.1, density: 0.001 })
+  const vectorSettingsRef = useRef(vectorSettings || {})
+  const simSpeedRef = useRef(simSpeed || 1)
+
+  useEffect(() => {
+    vectorSettingsRef.current = vectorSettings || {}
+    if (renderRef.current) {
+      renderRef.current.options.wireframes = vectorSettingsRef.current.wireframes || false
+    }
+  }, [vectorSettings])
+
+  useEffect(() => {
+    simSpeedRef.current = simSpeed || 1
+    if (engineRef.current) {
+      engineRef.current.timing.timeScale = simSpeed || 1
+    }
+  }, [simSpeed])
 
   useEffect(() => {
     activeToolRef.current = activeTool
@@ -259,39 +281,39 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     const canvasWidth = rect.width || window.innerWidth
     const canvasHeight = rect.height || (window.innerHeight - 48)
 
-    // 3. Create the renderer
+    // 3. Create the renderer (transparent so CSS grid background shows through)
     const render = Render.create({
       element: canvasRef.current,
       engine: engine,
       options: {
         width: canvasWidth,
         height: canvasHeight,
-        wireframes: false,
-        background: '#0a0e17',
+        wireframes: vectorSettingsRef.current?.wireframes || false,
+        background: 'transparent',
         pixelRatio: window.devicePixelRatio || 1,
       },
     })
+    renderRef.current = render
 
     const width = canvasWidth
     const height = canvasHeight
 
     // 4. Create initial bodies (Load from MongoDB if available)
-    const ground = Bodies.rectangle(width / 2, height - 30, width, 60, {
+    const ground = Bodies.rectangle(width / 2, height - 25, width, 50, {
       id: 999,
       isStatic: true,
       restitution: 0.8,
-      render: { fillStyle: '#1f2937', strokeStyle: '#374151', lineWidth: 2 },
+      render: { fillStyle: '#e2e8f0', strokeStyle: '#cbd5e0', lineWidth: 1 },
     })
 
     // 5. Add mouse drag support
     const mouse = Mouse.create(render.canvas)
 
     // Fix High-DPI (Retina) screen mouse drag offset issue
-    // Matter.js reads the canvas width (which is scaled by pixelRatio) and scales mouse position by pixelRatio.
-    // By setting the pixelRatio explicitly to what the Render is using, or scaling it back, we fix the offset.
-    const pr = window.devicePixelRatio || 1
-    // Apply the standard fix for Matter.js Mouse scaling on Retina screens:
-    Matter.Mouse.setScale(mouse, { x: 1 / pr, y: 1 / pr })
+    // Matter.js auto-computes scale from canvas.width / canvas.clientWidth, which equals devicePixelRatio
+    // on Retina displays. But since the physics world uses CSS pixel coordinates (same as mouse event
+    // coordinates), we need a 1:1 mapping. Override to prevent the pixelRatio from doubling coordinates.
+    Mouse.setScale(mouse, { x: 1, y: 1 })
 
     const mouseConstraint = MouseConstraint.create(engine, {
       mouse: mouse,
@@ -602,11 +624,11 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           // Default starting bodies if empty
           const box = Bodies.rectangle(width / 2, 100, 80, 80, {
             id: 1, restitution: 0.6,
-            render: { fillStyle: '#6366f1', strokeStyle: '#818cf8', lineWidth: 2 },
+            render: { fillStyle: '#6366f1', strokeStyle: '#4f46e5', lineWidth: 1.5 },
           });
           const circle = Bodies.circle(width / 2 - 120, 50, 40, {
             id: 2, restitution: 0.8,
-            render: { fillStyle: '#22c55e', strokeStyle: '#4ade80', lineWidth: 2 },
+            render: { fillStyle: '#22c55e', strokeStyle: '#16a34a', lineWidth: 1.5 },
           });
           Composite.add(engine.world, [box, circle]);
         }
@@ -619,6 +641,68 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
     runner.enabled = !isPaused // Set initial paused state
     Runner.run(runner, engine)
     Render.run(render)
+
+    // --- Vector Visualization Hook ---
+    Matter.Events.on(render, 'afterRender', () => {
+      const context = render.context;
+      if (!context) return;
+      
+      const vs = vectorSettingsRef.current;
+      
+      if (vs.velocity) {
+        engine.world.bodies.forEach(body => {
+          if (body.isStatic || body.id === 999) return;
+          const velX = body.velocity.x;
+          const velY = body.velocity.y;
+          const speed = Math.hypot(velX, velY);
+          
+          if (speed > 0.5) {
+            context.beginPath();
+            context.moveTo(body.position.x, body.position.y);
+            context.lineTo(body.position.x + velX * 5, body.position.y + velY * 5);
+            context.strokeStyle = '#1e6fe8'; // Blue
+            context.lineWidth = 2;
+            context.stroke();
+            
+            // Draw arrow head
+            const angle = Math.atan2(velY, velX);
+            context.beginPath();
+            context.moveTo(body.position.x + velX * 5, body.position.y + velY * 5);
+            context.lineTo(body.position.x + velX * 5 - 8 * Math.cos(angle - Math.PI/6), body.position.y + velY * 5 - 8 * Math.sin(angle - Math.PI/6));
+            context.lineTo(body.position.x + velX * 5 - 8 * Math.cos(angle + Math.PI/6), body.position.y + velY * 5 - 8 * Math.sin(angle + Math.PI/6));
+            context.lineTo(body.position.x + velX * 5, body.position.y + velY * 5);
+            context.fillStyle = '#1e6fe8';
+            context.fill();
+          }
+        });
+      }
+      
+      if (vs.gravity) {
+        engine.world.bodies.forEach(body => {
+          if (body.isStatic || body.id === 999) return;
+          // Scale mass for visual purposes so it's visible but not huge
+          const gravY = engine.world.gravity.y * engine.world.gravity.scale * body.mass * 10000;
+          
+          if (gravY > 0.5) {
+            context.beginPath();
+            context.moveTo(body.position.x, body.position.y);
+            context.lineTo(body.position.x, body.position.y + gravY);
+            context.strokeStyle = '#9333ea'; // Purple
+            context.lineWidth = 2;
+            context.stroke();
+            
+            // Draw arrow head
+            context.beginPath();
+            context.moveTo(body.position.x, body.position.y + gravY);
+            context.lineTo(body.position.x - 5, body.position.y + gravY - 8);
+            context.lineTo(body.position.x + 5, body.position.y + gravY - 8);
+            context.lineTo(body.position.x, body.position.y + gravY);
+            context.fillStyle = '#9333ea';
+            context.fill();
+          }
+        });
+      }
+    });
 
     // --- I. DB Save Hook ---
     const handleSave = async () => {
@@ -919,8 +1003,8 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
             resetBodyHighlight(selectedBodyRef.current)
           }
           selectedBodyRef.current = clickedBody
-          clickedBody.render.lineWidth = 4
-          clickedBody.render.strokeStyle = '#38bdf8' // Highlight blue
+          clickedBody.render.lineWidth = 3
+          clickedBody.render.strokeStyle = '#1e6fe8' // Selection highlight (scientific blue)
           window.dispatchEvent(
             new CustomEvent('body-selection-change', {
               detail: {
@@ -952,7 +1036,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           restitution: currentMaterial.restitution,
           friction: currentMaterial.friction,
           density: currentMaterial.density,
-          render: { fillStyle: '#6366f1', strokeStyle: '#818cf8', lineWidth: 2 },
+          render: { fillStyle: '#6366f1', strokeStyle: '#4f46e5', lineWidth: 1.5 },
         })
         Composite.add(engine.world, newBody)
         actionHistory.push({ type: 'body', id: bodyId })
@@ -974,7 +1058,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused }
           restitution: currentMaterial.restitution,
           friction: currentMaterial.friction,
           density: currentMaterial.density,
-          render: { fillStyle: '#22c55e', strokeStyle: '#4ade80', lineWidth: 2 },
+          render: { fillStyle: '#22c55e', strokeStyle: '#16a34a', lineWidth: 1.5 },
         })
         Composite.add(engine.world, newBody)
         actionHistory.push({ type: 'body', id: bodyId })

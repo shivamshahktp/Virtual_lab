@@ -1,23 +1,44 @@
 @import "tailwindcss";
 
-/* ── Virtual Lab Design Tokens ── */
+/* ── Virtual Lab Scientific Design Tokens ── */
 @theme {
-  --color-lab-bg: #0a0e17;
-  --color-lab-surface: #111827;
-  --color-lab-surface-light: #1f2937;
-  --color-lab-border: #374151;
-  --color-lab-accent: #6366f1;
-  --color-lab-accent-light: #818cf8;
-  --color-lab-success: #22c55e;
-  --color-lab-warning: #f59e0b;
-  --color-lab-danger: #ef4444;
-  --color-lab-text: #f3f4f6;
-  --color-lab-text-muted: #9ca3af;
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  /* Light Scientific Palette */
+  --color-lab-bg: #f0f4f8;
+  --color-lab-surface: #ffffff;
+  --color-lab-surface-light: #f7fafc;
+  --color-lab-surface-alt: #eef2f7;
+  --color-lab-border: #cbd5e0;
+  --color-lab-border-light: #e2e8f0;
+
+  /* Scientific Blue Accents */
+  --color-lab-accent: #1e6fe8;
+  --color-lab-accent-light: #3b82f6;
+  --color-lab-accent-dim: #dbeafe;
+  --color-lab-accent-dark: #1d4ed8;
+
+  /* Semantic Colors */
+  --color-lab-success: #059669;
+  --color-lab-success-dim: #d1fae5;
+  --color-lab-warning: #d97706;
+  --color-lab-warning-dim: #fef3c7;
+  --color-lab-danger: #dc2626;
+  --color-lab-danger-dim: #fee2e2;
+
+  /* Text */
+  --color-lab-text: #1a202c;
+  --color-lab-text-muted: #64748b;
+  --color-lab-text-subtle: #94a3b8;
+
+  /* Fonts */
+  --font-sans: 'Space Grotesk', 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
 }
 
 /* ── Global Resets ── */
+* {
+  box-sizing: border-box;
+}
+
 body {
   margin: 0;
   background: var(--color-lab-bg);
@@ -29,4 +50,105 @@ body {
 
 #root {
   min-height: 100svh;
+}
+
+/* ── Scientific Grid Background for canvas area ── */
+.physics-grid-bg {
+  background-color: #fafcff;
+  background-image:
+    linear-gradient(rgba(99, 143, 220, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 143, 220, 0.12) 1px, transparent 1px),
+    linear-gradient(rgba(99, 143, 220, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 143, 220, 0.06) 1px, transparent 1px);
+  background-size: 100px 100px, 100px 100px, 20px 20px, 20px 20px;
+  background-position: -1px -1px, -1px -1px, -1px -1px, -1px -1px;
+}
+
+/* ── Custom Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--color-lab-surface-alt); }
+::-webkit-scrollbar-thumb { background: var(--color-lab-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-lab-text-subtle); }
+
+/* ── Panel Glass Card ── */
+.sci-panel {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-lab-border-light);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 16px rgba(0,0,0,0.05);
+}
+
+/* ── Range Slider custom styling ── */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  background: var(--color-lab-border);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-lab-accent);
+  border: 2px solid white;
+  box-shadow: 0 1px 4px rgba(30, 111, 232, 0.4);
+  cursor: pointer;
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 2px 8px rgba(30, 111, 232, 0.5);
+}
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+}
+
+/* ── Metric chip ── */
+.sci-chip {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--color-lab-accent-dim);
+  color: var(--color-lab-accent-dark);
+  border: 1px solid rgba(30, 111, 232, 0.2);
+}
+
+/* ── Animations ── */
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-12px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.animate-fade-in { animation: fadeIn 0.3s ease forwards; }
+.animate-slide-left { animation: slideInLeft 0.25s ease forwards; }
+.animate-pulse-dot { animation: pulse-dot 1.4s ease-in-out infinite; }
+
+/* ── Tool button active glow ── */
+.tool-btn-active {
+  background: var(--color-lab-accent-dim);
+  border-color: var(--color-lab-accent) !important;
+  color: var(--color-lab-accent-dark) !important;
+  box-shadow: 0 0 0 3px rgba(30, 111, 232, 0.12);
 }

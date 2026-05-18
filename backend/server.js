@@ -16,8 +16,8 @@ const server = http.createServer(app);
 // Initialize Socket.io with CORS allowing your frontend to connect
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // Default Vite frontend port
-    methods: ["GET", "POST"]
+    origin: "http://localhost:5173", // Default Vite frontend port 
+    methods: ["GET", "POST"] 
   }
 });
 
@@ -29,7 +29,9 @@ app.get('/api/status', (req, res) => {
 // Connect the Room API routes
 // (Ensure you have a 'routes' folder with a 'rooms.js' file)
 const roomRoutes = require('./routes/rooms');
+const authRoutes = require('./routes/auth');
 app.use('/api/rooms', roomRoutes);
+app.use('/api/auth', authRoutes);
 
 // Handle Real-Time Connections for the Physics Canvas
 io.on('connection', (socket) => {

@@ -6,6 +6,11 @@ const roomSchema = new mongoose.Schema({
     required: true,
     unique: true,
   },
+  ownerId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // Optional for backward compatibility with existing rooms
+  },
   bodies: {
     type: Array,
     default: [], // Stores the Matter.js body shapes, positions, masses, etc.
