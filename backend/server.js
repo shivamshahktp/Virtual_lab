@@ -41,7 +41,9 @@ io.on('connection', (socket) => {
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
     socket.roomId = roomId; // Store for later use
-    const count = io.sockets.adapter.rooms.get(roomId)?.size || 0;
+    
+    const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
+    const count = clients.length;
     socket.emit('room-user-count', { roomId, userCount: count });
     console.log(`🚪 ${socket.id} joined room ${roomId} (${count} users)`);
 
@@ -50,6 +52,18 @@ io.on('connection', (socket) => {
       userId: socket.id,
       userCount: count,
     });
+
+    // If there are other users already in the room, ask the first one to sync their state to this new user
+    const otherClients = clients.filter(id => id !== socket.id);
+    if (otherClients.length > 0) {
+      io.to(otherClients[0]).emit('request-sync', { targetSocketId: socket.id });
+    }
+  });
+
+  // ── Sync state to a specific new user ──
+  socket.on('sync-state', (data) => {
+    // data = { targetSocketId, bodies: [...], constraints: [...] }
+    io.to(data.targetSocketId).emit('sync-state', data);
   });
 
   // ── Receive a physics update from one user, broadcast to the rest of the room ──

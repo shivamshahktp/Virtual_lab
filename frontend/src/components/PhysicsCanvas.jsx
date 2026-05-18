@@ -34,6 +34,18 @@ const getBodyDimensions = (body) => {
     return { radius: body.circleRadius }
   }
 
+  // Calculate true width/height from the body's local vertices to ignore rotation!
+  // Matter.js AABB (bounds.max - bounds.min) artificially inflates when a body is rotated.
+  if (body.vertices && body.vertices.length >= 4) {
+    const v = body.vertices
+    // Distance between first two vertices (top edge)
+    const width = Math.hypot(v[1].x - v[0].x, v[1].y - v[0].y)
+    // Distance between second and third vertices (side edge)
+    const height = Math.hypot(v[2].x - v[1].x, v[2].y - v[1].y)
+    return { width: Math.round(width), height: Math.round(height) }
+  }
+
+  // Fallback
   return {
     width: body.bounds.max.x - body.bounds.min.x,
     height: body.bounds.max.y - body.bounds.min.y,
@@ -301,7 +313,8 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
     const height = canvasHeight
 
     // 4. Create initial bodies (Load from MongoDB if available)
-    const ground = Bodies.rectangle(width / 2, height - 25, width, 50, {
+    // Make ground extremely wide so it covers the whole screen even if resized
+    const ground = Bodies.rectangle(width / 2, height - 25, Math.max(width, 4000), 50, {
       id: 999,
       isStatic: true,
       restitution: 0.8,
@@ -312,9 +325,8 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
     const mouse = Mouse.create(render.canvas)
 
     // Fix High-DPI (Retina) screen mouse drag offset issue
-    // Matter.js auto-computes scale from canvas.width / canvas.clientWidth, which equals devicePixelRatio
-    // on Retina displays. But since the physics world uses CSS pixel coordinates (same as mouse event
-    // coordinates), we need a 1:1 mapping. Override to prevent the pixelRatio from doubling coordinates.
+    // Matter.js needs pixelRatio set to match the canvas scaling
+    mouse.pixelRatio = window.devicePixelRatio || 1
     Mouse.setScale(mouse, { x: 1, y: 1 })
 
     const mouseConstraint = MouseConstraint.create(engine, {
@@ -528,6 +540,13 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
     });
 
     Matter.Events.on(engine, 'beforeUpdate', () => {
+      // Only allow MouseConstraint to interact when using the cursor tool
+      if (activeToolRef.current !== 'cursor') {
+        mouseConstraint.collisionFilter.mask = 0;
+      } else {
+        mouseConstraint.collisionFilter.mask = 0xFFFFFFFF;
+      }
+
       if (mouseConstraint.body) {
         const body = mouseConstraint.body;
         // Move any background pivots attached to this dynamic body so they drag along
@@ -539,100 +558,108 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
       }
     });
 
+    const loadRoomState = (roomData, isInitial = false) => {
+      if (roomData && roomData.bodies && roomData.bodies.length > 0) {
+        // Reconstruct bodies from database or sync
+        const loadedBodies = roomData.bodies.map(b => {
+          let newBody;
+          const opts = b.options || {};
+          const dimensions = b.dimensions || {};
+          if (b.type === 'motor') {
+            if (opts.motorType === 'gear') {
+              newBody = createGear(b.x, b.y - 5, opts.gearRadius || 40, opts.gearTeeth || 12, {
+                id: b.id, isStatic: opts.isMotorized ?? true, angle: b.angle,
+                friction: 0.1, restitution: 0.2,
+                render: { fillStyle: '#94a3b8', strokeStyle: '#475569', lineWidth: 2 }
+              });
+              newBody.isMotor = opts.isMotorized ?? true;
+              newBody.motorSpeed = opts.motorSpeed || 0.05;
+              newBody.motorDirection = opts.motorDirection || 'clockwise';
+              newBody.motorType = 'gear';
+              newBody.gearRadius = opts.gearRadius || 40;
+              newBody.gearTeeth = opts.gearTeeth || 12;
+            } else {
+              newBody = Bodies.rectangle(b.x, b.y - 5, dimensions.width || 150, dimensions.height || 20, {
+                id: b.id, isStatic: opts.isMotorized ?? true, angle: b.angle,
+                render: { fillStyle: '#eab308', strokeStyle: '#ca8a04', lineWidth: 2 }
+              });
+              newBody.isMotor = opts.isMotorized ?? true;
+              newBody.motorSpeed = opts.motorSpeed || 0.05;
+              newBody.motorDirection = opts.motorDirection || 'clockwise';
+              newBody.motorType = 'rod';
+            }
+          } else if (b.type === 'circle') {
+            newBody = Bodies.circle(b.x, b.y - 5, dimensions.radius || 40, {
+              id: b.id, angle: b.angle, velocity: b.velocity, angularVelocity: b.angularVelocity,
+              restitution: opts.restitution ?? 0.8, friction: opts.friction ?? 0.1, density: opts.density ?? 0.001,
+              render: { fillStyle: '#22c55e', strokeStyle: '#4ade80', lineWidth: 2 }
+            });
+            Matter.Body.setVelocity(newBody, b.velocity || { x: 0, y: 0 });
+          } else {
+            newBody = Bodies.rectangle(b.x, b.y - 5, dimensions.width || 80, dimensions.height || 80, {
+              id: b.id, angle: b.angle, velocity: b.velocity, angularVelocity: b.angularVelocity,
+              restitution: opts.restitution ?? 0.6, friction: opts.friction ?? 0.1, density: opts.density ?? 0.001,
+              render: { fillStyle: '#6366f1', strokeStyle: '#818cf8', lineWidth: 2 }
+            });
+            Matter.Body.setVelocity(newBody, b.velocity || { x: 0, y: 0 });
+          }
+          return newBody;
+        });
+
+        Composite.add(engine.world, loadedBodies);
+
+        // Reconstruct constraints
+        if (roomData.constraints) {
+          roomData.constraints.forEach(c => {
+            const bodyA = Composite.get(engine.world, c.bodyAId, 'body');
+            if (c.type === 'pivot' && bodyA) {
+              const pivot = Constraint.create({
+                id: c.id, bodyA: bodyA, 
+                pointA: c.pointA || { x: 0, y: 0 },
+                pointB: { x: c.x, y: c.y }, stiffness: 1, length: 0,
+                render: c.hidden ? { visible: false } : { strokeStyle: '#f59e0b', lineWidth: 4 }
+              });
+              Composite.add(engine.world, pivot);
+            } else if (c.type === 'spring' || c.type === 'rod' || c.type === 'rope') {
+              const bodyB = Composite.get(engine.world, c.bodyBId, 'body');
+              if ((bodyA || c.pointA) && bodyB) {
+                const newConstraint = Constraint.create({
+                  id: c.id, bodyA: bodyA, bodyB: bodyB, 
+                  pointA: c.pointA || { x: 0, y: 0 },
+                  pointB: c.pointB || { x: 0, y: 0 },
+                  stiffness: c.stiffness || 0.05,
+                  length: c.length,
+                  isRope: c.type === 'rope' || c.isRope,
+                  maxLength: c.maxLength,
+                  render: c.type === 'rod' ? { strokeStyle: '#94a3b8', lineWidth: 5 } : c.type === 'rope' ? { strokeStyle: '#d97706', lineWidth: 3 } : { strokeStyle: '#ef4444', lineWidth: 3 }
+                });
+                Composite.add(engine.world, newConstraint);
+              }
+            }
+          });
+        }
+      } else if (isInitial) {
+        // Default starting bodies if empty
+        const box = Bodies.rectangle(width / 2, 100, 80, 80, {
+          id: 1, restitution: 0.6,
+          render: { fillStyle: '#6366f1', strokeStyle: '#4f46e5', lineWidth: 1.5 },
+        });
+        const circle = Bodies.circle(width / 2 - 120, 50, 40, {
+          id: 2, restitution: 0.8,
+          render: { fillStyle: '#22c55e', strokeStyle: '#16a34a', lineWidth: 1.5 },
+        });
+        Composite.add(engine.world, [box, circle]);
+      }
+    };
+
     // Fetch saved state from MongoDB
+    let hasReceivedLiveSync = false;
     fetch(`${API_URL}/api/rooms/${roomId}`)
       .then(res => res.json())
       .then(roomData => {
-        if (roomData && roomData.bodies && roomData.bodies.length > 0) {
-          // Reconstruct bodies from database
-          const loadedBodies = roomData.bodies.map(b => {
-            let newBody;
-            const opts = b.options || {};
-            const dimensions = b.dimensions || {};
-            if (b.type === 'motor') {
-              if (opts.motorType === 'gear') {
-                newBody = createGear(b.x, b.y, opts.gearRadius || 40, opts.gearTeeth || 12, {
-                  id: b.id, isStatic: opts.isMotorized ?? true, angle: b.angle,
-                  friction: 0.1, restitution: 0.2,
-                  render: { fillStyle: '#94a3b8', strokeStyle: '#475569', lineWidth: 2 }
-                });
-                newBody.isMotor = opts.isMotorized ?? true;
-                newBody.motorSpeed = opts.motorSpeed || 0.05;
-                newBody.motorDirection = opts.motorDirection || 'clockwise';
-                newBody.motorType = 'gear';
-                newBody.gearRadius = opts.gearRadius || 40;
-                newBody.gearTeeth = opts.gearTeeth || 12;
-              } else {
-                newBody = Bodies.rectangle(b.x, b.y, dimensions.width || 150, dimensions.height || 20, {
-                  id: b.id, isStatic: opts.isMotorized ?? true, angle: b.angle,
-                  render: { fillStyle: '#eab308', strokeStyle: '#ca8a04', lineWidth: 2 }
-                });
-                newBody.isMotor = opts.isMotorized ?? true;
-                newBody.motorSpeed = opts.motorSpeed || 0.05;
-                newBody.motorDirection = opts.motorDirection || 'clockwise';
-                newBody.motorType = 'rod';
-              }
-            } else if (b.type === 'circle') {
-              newBody = Bodies.circle(b.x, b.y, dimensions.radius || 40, {
-                id: b.id, angle: b.angle, velocity: b.velocity, angularVelocity: b.angularVelocity,
-                restitution: opts.restitution ?? 0.8, friction: opts.friction ?? 0.1, density: opts.density ?? 0.001,
-                render: { fillStyle: '#22c55e', strokeStyle: '#4ade80', lineWidth: 2 }
-              });
-              Matter.Body.setVelocity(newBody, b.velocity || { x: 0, y: 0 });
-            } else {
-              newBody = Bodies.rectangle(b.x, b.y, dimensions.width || 80, dimensions.height || 80, {
-                id: b.id, angle: b.angle, velocity: b.velocity, angularVelocity: b.angularVelocity,
-                restitution: opts.restitution ?? 0.6, friction: opts.friction ?? 0.1, density: opts.density ?? 0.001,
-                render: { fillStyle: '#6366f1', strokeStyle: '#818cf8', lineWidth: 2 }
-              });
-              Matter.Body.setVelocity(newBody, b.velocity || { x: 0, y: 0 });
-            }
-            return newBody;
-          });
-
-          Composite.add(engine.world, loadedBodies);
-
-          // Reconstruct constraints
-          if (roomData.constraints) {
-            roomData.constraints.forEach(c => {
-              const bodyA = Composite.get(engine.world, c.bodyAId, 'body');
-              if (c.type === 'pivot' && bodyA) {
-                const pivot = Constraint.create({
-                  id: c.id, bodyA: bodyA, 
-                  pointA: c.pointA || { x: 0, y: 0 },
-                  pointB: { x: c.x, y: c.y }, stiffness: 1, length: 0,
-                  render: c.hidden ? { visible: false } : { strokeStyle: '#f59e0b', lineWidth: 4 }
-                });
-                Composite.add(engine.world, pivot);
-              } else if (c.type === 'spring' || c.type === 'rod' || c.type === 'rope') {
-                const bodyB = Composite.get(engine.world, c.bodyBId, 'body');
-                if ((bodyA || c.pointA) && bodyB) {
-                  const newConstraint = Constraint.create({
-                    id: c.id, bodyA: bodyA, bodyB: bodyB, 
-                    pointA: c.pointA || { x: 0, y: 0 },
-                    pointB: c.pointB || { x: 0, y: 0 },
-                    stiffness: c.stiffness || 0.05,
-                    length: c.length,
-                    isRope: c.type === 'rope' || c.isRope,
-                    maxLength: c.maxLength,
-                    render: c.type === 'rod' ? { strokeStyle: '#94a3b8', lineWidth: 5 } : c.type === 'rope' ? { strokeStyle: '#d97706', lineWidth: 3 } : { strokeStyle: '#ef4444', lineWidth: 3 }
-                  });
-                  Composite.add(engine.world, newConstraint);
-                }
-              }
-            });
-          }
-        } else {
-          // Default starting bodies if empty
-          const box = Bodies.rectangle(width / 2, 100, 80, 80, {
-            id: 1, restitution: 0.6,
-            render: { fillStyle: '#6366f1', strokeStyle: '#4f46e5', lineWidth: 1.5 },
-          });
-          const circle = Bodies.circle(width / 2 - 120, 50, 40, {
-            id: 2, restitution: 0.8,
-            render: { fillStyle: '#22c55e', strokeStyle: '#16a34a', lineWidth: 1.5 },
-          });
-          Composite.add(engine.world, [box, circle]);
+        // Only load DB state if a live sync hasn't already overwritten it
+        if (!hasReceivedLiveSync) {
+          loadRoomState(roomData, true);
         }
       })
       .catch(err => console.error("Failed to load room from DB:", err));
@@ -706,9 +733,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
       }
     });
 
-    // --- I. DB Save Hook ---
-    const handleSave = async () => {
-      // Serialize dynamic bodies and motors
+    const getRoomState = () => {
       const bodiesToSave = engine.world.bodies
         .filter(b => (!b.isStatic || b.isMotor) && b.id !== 999)
         .map(b => ({
@@ -730,7 +755,6 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
           } : { restitution: b.restitution, friction: b.friction, density: b.density }
         }));
 
-      // Serialize constraints (ignoring mouse constraint)
       const constraintsToSave = engine.world.constraints
         .filter(c => c.label !== 'Mouse Constraint')
         .map(c => ({
@@ -749,11 +773,19 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
           hidden: c.render?.visible === false
         }));
 
+      return { bodies: bodiesToSave, constraints: constraintsToSave };
+    };
+
+    // --- I. DB Save Hook ---
+    const handleSave = async () => {
+      const state = getRoomState();
+
+
       try {
         const res = await fetch(`${API_URL}/api/rooms/${roomId}/save`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ bodies: bodiesToSave, constraints: constraintsToSave })
+          body: JSON.stringify(state)
         });
         if (res.ok) alert('✅ Simulation saved securely to MongoDB Database!');
         else alert('❌ Failed to save simulation.');
@@ -814,7 +846,8 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
           }
         }
       })
-      isApplyingRemoteUpdate = false
+      // Do NOT set isApplyingRemoteUpdate = false here! 
+      // We must wait for the next Engine tick (afterUpdate) to skip the broadcast.
     }
 
     socket.on('physics-update', onPhysicsUpdate)
@@ -822,8 +855,11 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
     // B. Broadcast our local state to other users
     let lastBroadcast = 0
     Matter.Events.on(engine, 'afterUpdate', () => {
-      // Don't broadcast if we are currently applying a remote update
-      if (isApplyingRemoteUpdate) return
+      // If we just applied a remote update this tick, skip broadcasting to prevent an infinite ping-pong loop
+      if (isApplyingRemoteUpdate) {
+        isApplyingRemoteUpdate = false
+        return
+      }
 
       const now = Date.now()
       // Throttle broadcasts to ~20 times per second (50ms) to save bandwidth
@@ -1409,6 +1445,21 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
     }
     socket.on('clear-canvas', onClearCanvas)
 
+    // M. Live sync hooks for newly joined users
+    const onRequestSync = (data) => {
+      const state = getRoomState();
+      socket.emit('sync-state', { targetSocketId: data.targetSocketId, bodies: state.bodies, constraints: state.constraints });
+    };
+    socket.on('request-sync', onRequestSync);
+
+    const onSyncState = (data) => {
+      hasReceivedLiveSync = true;
+      // Clear current canvas before applying live sync
+      onClearCanvas();
+      loadRoomState(data);
+    };
+    socket.on('sync-state', onSyncState);
+
     // L. Receive remove events (Undo) from other users
     const onRemoveBody = (data) => {
       const bodyToRemove = engine.world.bodies.find(b => b.id === data.id)
@@ -1454,10 +1505,19 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
       render.options.height = h
       render.options.pixelRatio = pr
 
-      // Matter.js recomputes mouse.scale from canvas.width / canvas.clientWidth
-      // (= devicePixelRatio) after the canvas is resized, which breaks object
-      // pickup on non-Retina screens. Re-apply the 1:1 override every time.
+      // Matter.js needs pixelRatio updated if the window is moved to a different DPI monitor
+      mouse.pixelRatio = pr
       Mouse.setScale(mouse, { x: 1, y: 1 })
+
+      // Keep ground at the bottom
+      const ground = engine.world.bodies.find(b => b.id === 999)
+      if (ground) {
+        Matter.Body.setPosition(ground, {
+          x: w / 2,
+          y: h - 25
+        })
+        // Since we can't easily scale the ground width, we just make it extremely wide initially
+      }
     }
     window.addEventListener('resize', handleResize)
 
@@ -1471,6 +1531,8 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
       socket.off('clear-canvas', onClearCanvas)
       socket.off('remove-body', onRemoveBody)
       socket.off('remove-constraint', onRemoveConstraint)
+      socket.off('request-sync', onRequestSync)
+      socket.off('sync-state', onSyncState)
       canvasContainer.removeEventListener('mousedown', handleCanvasClick)
       window.removeEventListener('resize', handleResize)
       window.removeEventListener('keydown', handleKeyDown)

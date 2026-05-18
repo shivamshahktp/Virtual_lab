@@ -52,7 +52,11 @@ export default function LabRoom() {
     if (!roomId) return
 
     socket.connect()
-    socket.emit('join-room', roomId)
+
+    // Ensure we join the room immediately, and ALSO re-join if the socket reconnects
+    const joinRoom = () => socket.emit('join-room', roomId)
+    joinRoom() // Call once immediately in case it's already connected
+    socket.on('connect', joinRoom)
 
     const onUserJoined = (data) => setUserCount(data.userCount)
     const onUserLeft = (data) => setUserCount(data.userCount)
@@ -63,6 +67,7 @@ export default function LabRoom() {
     socket.on('room-user-count', onRoomUserCount)
 
     return () => {
+      socket.off('connect', joinRoom)
       socket.off('user-joined', onUserJoined)
       socket.off('user-left', onUserLeft)
       socket.off('room-user-count', onRoomUserCount)
