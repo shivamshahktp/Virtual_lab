@@ -1451,6 +1451,11 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
       render.options.width = w
       render.options.height = h
       render.options.pixelRatio = pr
+
+      // Matter.js recomputes mouse.scale from canvas.width / canvas.clientWidth
+      // (= devicePixelRatio) after the canvas is resized, which breaks object
+      // pickup on non-Retina screens. Re-apply the 1:1 override every time.
+      Mouse.setScale(mouse, { x: 1, y: 1 })
     }
     window.addEventListener('resize', handleResize)
 
