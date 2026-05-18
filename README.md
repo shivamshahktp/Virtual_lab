@@ -48,8 +48,9 @@
 ## 🚀 Setup & Installation
 
 ### Prerequisites
-- Node.js v18+ and npm
-- A MongoDB Atlas account (free tier works)
+- **Node.js v18+** and npm — download from [nodejs.org](https://nodejs.org)
+- A **MongoDB Atlas** account (free tier works) — [cloud.mongodb.com](https://cloud.mongodb.com)
+- Works on **macOS, Windows, and Linux**
 
 ### 1. Clone the repository
 
@@ -88,10 +89,35 @@ The backend will start on **http://localhost:5001**
 ```bash
 cd frontend
 npm install
+```
+
+Create a `.env` file in the `frontend/` directory:
+
+```env
+VITE_API_URL=http://localhost:5001
+```
+
+> ℹ️ A template is provided at `frontend/.env.example` — just copy and rename it.
+
+Start the frontend:
+
+```bash
 npm run dev
 ```
 
 The frontend will start on **http://localhost:5173**
+
+---
+
+## 💻 Windows Users
+
+This project runs fine on Windows. A few notes:
+
+- Use **Command Prompt**, **PowerShell**, or **Git Bash** (all work)
+- If you see `'vite' is not recognized`, run `npm install` again inside `frontend/`
+- If you see `'nodemon' is not recognized`, run `npm install` again inside `backend/`
+- Line endings are handled automatically via `.gitattributes` (LF enforced)
+- Make sure **Node.js is added to PATH** during installation
 
 ---
 

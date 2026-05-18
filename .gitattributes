@@ -1,0 +1,11 @@
+# Normalize line endings to LF on commit, checkout as LF on all platforms.
+# This prevents Windows CRLF issues from breaking shell scripts or Node.js files.
+* text=auto eol=lf
+
+# Explicitly keep binary files untouched
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
