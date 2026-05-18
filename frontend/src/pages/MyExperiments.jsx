@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001';
+
 export default function MyExperiments() {
   const [savedRooms, setSavedRooms] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -15,7 +17,7 @@ export default function MyExperiments() {
           return;
         }
 
-        const res = await fetch('http://localhost:5001/api/rooms/my-experiments', {
+        const res = await fetch(`${API_URL}/api/rooms/my-experiments`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         const data = await res.json();

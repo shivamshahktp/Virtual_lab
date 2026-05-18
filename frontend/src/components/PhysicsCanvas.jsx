@@ -4,6 +4,8 @@ import socket from '../socket'
 
 const { Engine, Render, Runner, Bodies, Composite, Mouse, MouseConstraint, Constraint, Query } = Matter
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001'
+
 // Helper function to create a compound gear body
 const createGear = (x, y, radius, teethCount, options) => {
   const parts = [];
@@ -538,7 +540,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
     });
 
     // Fetch saved state from MongoDB
-    fetch(`http://localhost:5001/api/rooms/${roomId}`)
+    fetch(`${API_URL}/api/rooms/${roomId}`)
       .then(res => res.json())
       .then(roomData => {
         if (roomData && roomData.bodies && roomData.bodies.length > 0) {
@@ -748,7 +750,7 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
         }));
 
       try {
-        const res = await fetch(`http://localhost:5001/api/rooms/${roomId}/save`, {
+        const res = await fetch(`${API_URL}/api/rooms/${roomId}/save`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ bodies: bodiesToSave, constraints: constraintsToSave })

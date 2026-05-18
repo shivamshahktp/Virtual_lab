@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { CheckCircle2, Layers, Cpu, Activity, FolderOpen, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
-const API_URL = 'http://localhost:5001/api';
+const API_URL = `${import.meta.env.VITE_API_URL || 'http://localhost:5001'}/api`;
 
 export default function Home() {
   const navigate = useNavigate();
