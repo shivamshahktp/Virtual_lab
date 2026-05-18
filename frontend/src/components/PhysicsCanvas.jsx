@@ -864,19 +864,24 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
       const now = Date.now()
       // Throttle broadcasts to ~20 times per second (50ms) to save bandwidth
       if (now - lastBroadcast > 50) {
-        const dynamicBodies = engine.world.bodies.filter(b => (!b.isStatic || b === customDragBody) && b.id !== 999)
+        // ONLY broadcast bodies that the local user is actively dragging to prevent simulation fighting
+        const activeBodies = engine.world.bodies.filter(b => 
+          b.id !== 999 && (b === customDragBody || (mouseConstraint.body && mouseConstraint.body.id === b.id))
+        )
 
-        // Only extract the essential physics data
-        const bodiesData = dynamicBodies.map(b => ({
-          id: b.id,
-          position: b.position,
-          angle: b.angle,
-          velocity: b.velocity,
-          angularVelocity: b.angularVelocity
-        }))
+        if (activeBodies.length > 0) {
+          // Only extract the essential physics data
+          const bodiesData = activeBodies.map(b => ({
+            id: b.id,
+            position: b.position,
+            angle: b.angle,
+            velocity: b.velocity,
+            angularVelocity: b.angularVelocity
+          }))
 
-        // Send to backend
-        socket.emit('physics-update', { roomId, bodies: bodiesData })
+          // Send to backend
+          socket.emit('physics-update', { roomId, bodies: bodiesData })
+        }
         lastBroadcast = now
       }
     })
@@ -1367,6 +1372,19 @@ export default function PhysicsCanvas({ roomId, activeTool, material, isPaused, 
         !targetBody.isStatic
       ) {
         Matter.Body.setDensity(targetBody, data.body.density)
+      }
+
+      if (selectedBodyRef.current?.id === targetBody.id) {
+        window.dispatchEvent(
+          new CustomEvent('body-selection-change', {
+            detail: {
+              id: targetBody.id,
+              restitution: targetBody.restitution,
+              friction: targetBody.friction,
+              density: targetBody.density,
+            },
+          })
+        )
       }
     }
     socket.on('update-body-properties', onUpdateBodyProperties)
