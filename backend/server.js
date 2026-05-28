@@ -5,76 +5,75 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 require('dotenv').config();
 
-// Initialize Express
+// Spin up Express app
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Create HTTP server (required for Socket.io)
+// Grab an HTTP server instance so Socket.io can hook into it
 const server = http.createServer(app);
 
-// Initialize Socket.io with CORS allowing your frontend to connect
+// Fire up socket connection with CORS open for localhost client
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173", // Default Vite frontend port 
+    origin: "http://localhost:5173", // Dev client port 
     methods: ["GET", "POST"] 
   }
 });
 
-// Basic Health Check Route (Phase 1 Requirement)
+// Quick ping endpoint to see if backend is alive
 app.get('/api/status', (req, res) => {
   res.json({ status: 'Virtual Lab Backend is running seamlessly!' });
 });
 
-// Connect the Room API routes
-// (Ensure you have a 'routes' folder with a 'rooms.js' file)
+// Wire up routing endpoints
 const roomRoutes = require('./routes/rooms');
 const authRoutes = require('./routes/auth');
 app.use('/api/rooms', roomRoutes);
 app.use('/api/auth', authRoutes);
 
-// Handle Real-Time Connections for the Physics Canvas
+// Manage real-time multiplayer socket events
 io.on('connection', (socket) => {
-  console.log(`🟢 New user connected: ${socket.id}`);
+  console.log(`New user connected: ${socket.id}`);
 
-  // ── Join a room ──
+  // ── Peer joins a room ──
   socket.on('join-room', (roomId) => {
     socket.join(roomId);
-    socket.roomId = roomId; // Store for later use
+    socket.roomId = roomId; // Cache it on the socket for cleanup on disconnect
     
     const clients = Array.from(io.sockets.adapter.rooms.get(roomId) || []);
     const count = clients.length;
     socket.emit('room-user-count', { roomId, userCount: count });
-    console.log(`🚪 ${socket.id} joined room ${roomId} (${count} users)`);
+    console.log(`User ${socket.id} joined room ${roomId} (${count} users)`);
 
-    // Notify others in the room that someone joined
+    // Tell the rest of the room a new peer arrived
     socket.to(roomId).emit('user-joined', {
       userId: socket.id,
       userCount: count,
     });
 
-    // If there are other users already in the room, ask the first one to sync their state to this new user
+    // If someone is already in the room, request their current canvas state to copy it over
     const otherClients = clients.filter(id => id !== socket.id);
     if (otherClients.length > 0) {
       io.to(otherClients[0]).emit('request-sync', { targetSocketId: socket.id });
     }
   });
 
-  // ── Sync state to a specific new user ──
+  // ── Peer-to-peer state sharing ──
   socket.on('sync-state', (data) => {
-    // data = { targetSocketId, bodies: [...], constraints: [...] }
+    // payload: { targetSocketId, bodies: [...], constraints: [...] }
     io.to(data.targetSocketId).emit('sync-state', data);
   });
 
-  // ── Receive a physics update from one user, broadcast to the rest of the room ──
+  // ── Forward position/angle/velocity updates to room peers ──
   socket.on('physics-update', (data) => {
-    // data = { roomId, bodies: [...serialized Matter.js bodies] }
+    // payload: { roomId, bodies: [...serialized Matter.js bodies] }
     socket.to(data.roomId).emit('physics-update', data);
   });
 
-  // ── A user adds a new body to the canvas ──
+  // ── Spawn a shape in everyone else's browser ──
   socket.on('add-body', (data) => {
-    // data = { roomId, body: { type, x, y, options... } }
+    // payload: { roomId, body: { type, x, y, options... } }
     socket.to(data.roomId).emit('add-body', data);
   });
 
@@ -82,9 +81,9 @@ io.on('connection', (socket) => {
     socket.to(data.roomId).emit('update-body-properties', data);
   });
 
-  // ── A user adds a constraint (pivot, spring) ──
+  // ── Attach a constraint link in everyone else's browser ──
   socket.on('add-constraint', (data) => {
-    // data = { roomId, constraint: { type, bodyAId, bodyBId... } }
+    // payload: { roomId, constraint: { type, bodyAId, bodyBId... } }
     socket.to(data.roomId).emit('add-constraint', data);
   });
 
@@ -92,9 +91,9 @@ io.on('connection', (socket) => {
     socket.to(data.roomId).emit('update-constraint', data);
   });
 
-  // ── A user removes a body from the canvas ──
+  // ── Delete shape event ──
   socket.on('remove-body', (data) => {
-    // data = { roomId, bodyId }
+    // payload: { roomId, bodyId }
     socket.to(data.roomId).emit('remove-body', data);
   });
 
@@ -102,47 +101,47 @@ io.on('connection', (socket) => {
     socket.to(data.roomId).emit('remove-constraint', data);
   });
 
-  // ── A user clears the canvas ──
+  // ── Empty canvas event ──
   socket.on('clear-canvas', (data) => {
-    // data = { roomId }
+    // payload: { roomId }
     socket.to(data.roomId).emit('clear-canvas', data);
   });
 
-  // ── Disconnect ──
+  // ── Client closed window or connection dropped ──
   socket.on('disconnect', () => {
     if (socket.roomId) {
       const count = io.sockets.adapter.rooms.get(socket.roomId)?.size || 0;
-      console.log(`🔴 ${socket.id} left room ${socket.roomId} (${count} remaining)`);
+      console.log(`User ${socket.id} left room ${socket.roomId} (${count} remaining)`);
       socket.to(socket.roomId).emit('user-left', {
         userId: socket.id,
         userCount: count,
       });
     } else {
-      console.log(`🔴 User disconnected: ${socket.id}`);
+      console.log(`User disconnected: ${socket.id}`);
     }
   });
 });
 
-// ── DATABASE CONNECTION AND SERVER STARTUP ──
+// ── Server boot sequence ──
 const startServer = async () => {
   try {
-    // 1. Force the app to wait for MongoDB to connect first
+    // 1. Hook up MongoDB first
     await mongoose.connect(process.env.MONGO_URI);
-    console.log('📦 Connected to MongoDB Atlas successfully!');
+    console.log('Connected to MongoDB Atlas successfully!');
 
-    // 2. ONLY start the server if the database connection was successful
+    // 2. Only listen on PORT if db connection succeeded
     const PORT = process.env.PORT || 5001;
     server.listen(PORT, () => {
-      console.log(`🚀 Server running on http://localhost:${PORT}`);
+      console.log(`Server running on http://localhost:${PORT}`);
     });
 
   } catch (err) {
-    // 3. Catch errors immediately and kill the server so it doesn't hang
-    console.error('❌ CRITICAL: MongoDB connection failed!');
+    // 3. Fail fast if database connection is broken
+    console.error('CRITICAL: MongoDB connection failed!');
     console.error(err.message);
     process.exit(1); 
   }
 };
 
-// Execute the startup function
+// Run boot sequence
 startServer();

@@ -21,7 +21,7 @@ const UserSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
-// Hash password before saving
+// Automatic hashing: scramble the password before hitting the DB
 UserSchema.pre('save', async function() {
   if (!this.isModified('password')) return;
   
@@ -29,7 +29,7 @@ UserSchema.pre('save', async function() {
   this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Method to compare password
+// Helper to verify password matches during login
 UserSchema.methods.comparePassword = async function(candidatePassword) {
   return await bcrypt.compare(candidatePassword, this.password);
 };

@@ -3,10 +3,10 @@ const router = express.Router();
 const Room = require('../models/Room');
 const auth = require('../middleware/auth');
 
-// POST /api/rooms - Create a new room with a random 6-character code
+// POST /api/rooms: Set up a new simulation room with a random 6-letter join code
 router.post('/', auth, async (req, res) => {
   try {
-    // Generate a random 6-character alphanumeric code (e.g., "X7B9QA")
+    // Make a simple 6-letter tag like "X7B9QA"
     const newRoomId = Math.random().toString(36).substring(2, 8).toUpperCase();
     
     const room = new Room({ 
@@ -22,10 +22,10 @@ router.post('/', auth, async (req, res) => {
   }
 });
 
-// GET /api/rooms - Fetch all saved rooms for the gallery
+// GET /api/rooms: Get the public gallery list
 router.get('/', async (req, res) => {
   try {
-    // Fetch recent rooms that have actually been saved (have bodies)
+    // Only show rooms that aren't empty (i.e. they actually have shapes in them)
     const rooms = await Room.find({ 'bodies.0': { $exists: true } })
       .select('roomId createdAt bodies constraints')
       .sort({ createdAt: -1 })
@@ -45,7 +45,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/rooms/my-experiments - Fetch saved rooms exclusively owned by the user
+// GET /api/rooms/my-experiments: Grab the user's personal saved physics models
 router.get('/my-experiments', auth, async (req, res) => {
   try {
     const rooms = await Room.find({ ownerId: req.user.userId, 'bodies.0': { $exists: true } })
@@ -66,7 +66,7 @@ router.get('/my-experiments', auth, async (req, res) => {
   }
 });
 
-// GET /api/rooms/:roomId - Fetch an existing room's physics data
+// GET /api/rooms/:roomId: Load a room's canvas elements by code
 router.get('/:roomId', async (req, res) => {
   try {
     const room = await Room.findOne({ roomId: req.params.roomId });
@@ -82,7 +82,7 @@ router.get('/:roomId', async (req, res) => {
   }
 });
 
-// PUT /api/rooms/:roomId/save - Save the entire state of the room
+// PUT /api/rooms/:roomId/save: Commit the current layout, masses, and pivots to Mongo
 router.put('/:roomId/save', async (req, res) => {
   try {
     const { bodies, constraints } = req.body;

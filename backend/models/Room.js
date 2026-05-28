@@ -9,15 +9,15 @@ const roomSchema = new mongoose.Schema({
   ownerId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: false // Optional for backward compatibility with existing rooms
+    required: false // Keep it optional so older rooms don't break
   },
   bodies: {
     type: Array,
-    default: [], // Stores the Matter.js body shapes, positions, masses, etc.
+    default: [], // Dump of all Matter.js shapes (positions, masses, velocities, etc.)
   },
   constraints: {
     type: Array,
-    default: [], // Stores the ropes, springs, and pivots connecting the bodies
+    default: [], // Connective tissues like ropes, springs, rods, and pivots
   },
   createdAt: {
     type: Date,

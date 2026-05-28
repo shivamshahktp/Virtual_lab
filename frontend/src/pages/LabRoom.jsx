@@ -27,6 +27,8 @@ export default function LabRoom() {
     friction: 0.1,
     density: 0.001,
     ropeLength: 120,
+    rodLength: 120,
+    springLength: 120,
     springStiffness: 0.05,
     motorType: 'gear',
     gearTeeth: 12,
@@ -80,7 +82,14 @@ export default function LabRoom() {
       const detail = event.detail || null
       setSelectedConstraintType(detail?.type || null)
       if (typeof detail?.length === 'number') {
-        setMaterial((prev) => ({ ...prev, ropeLength: detail.length }))
+        const type = detail.type
+        if (type === 'rod') {
+          setMaterial((prev) => ({ ...prev, rodLength: detail.length }))
+        } else if (type === 'spring') {
+          setMaterial((prev) => ({ ...prev, springLength: detail.length }))
+        } else {
+          setMaterial((prev) => ({ ...prev, ropeLength: detail.length }))
+        }
       }
     }
     window.addEventListener('constraint-selection-change', handleConstraintSelectionChange)
@@ -116,9 +125,9 @@ export default function LabRoom() {
 
   return (
     <div className="h-screen w-screen flex flex-col bg-[#f8fafc]">
-      {/* ── Top Header Bar (Screenshot 4) ── */}
+
       <header className="h-[60px] shrink-0 flex items-center justify-between px-6 bg-white border-b border-gray-200 z-20">
-        {/* Left: Logo */}
+
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
           <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
             <circle cx="16" cy="16" r="14" stroke="#1e6fe8" strokeWidth="1.5" strokeDasharray="4 2" />
@@ -131,7 +140,7 @@ export default function LabRoom() {
           </div>
         </div>
 
-        {/* Center: Room Name */}
+
         <div className="flex items-center gap-2 px-4 py-1.5 rounded-md hover:bg-gray-50">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Room</span>
           <span className="text-[16px] font-mono font-bold text-[#1e6fe8] bg-blue-50 px-3 py-1 rounded border border-blue-100">{roomId}</span>
@@ -141,7 +150,7 @@ export default function LabRoom() {
           </div>
         </div>
 
-        {/* Right: Actions */}
+
         <div className="flex items-center gap-3">
           <button 
             onClick={handleSaveRoom}
@@ -190,12 +199,12 @@ export default function LabRoom() {
         </div>
       </header>
 
-      {/* ── Main Workspace ── */}
+
       <div className="flex-1 flex overflow-hidden">
         
-        {/* ── Left Sidebar ── */}
+
         <div className="w-[320px] shrink-0 flex flex-col bg-white border-r border-gray-200 z-10 animate-slide-left">
-          {/* Tabs */}
+
           <div className="flex border-b border-gray-200">
             {['Build', 'Connectors', 'Materials'].map(tab => (
               <button 
@@ -210,7 +219,7 @@ export default function LabRoom() {
             ))}
           </div>
           
-          {/* Content */}
+
           <div className="flex-1 flex overflow-hidden relative">
             <Toolbar activeTool={activeTool} setActiveTool={setActiveTool} material={material} setMaterial={setMaterial} />
             
@@ -289,9 +298,9 @@ export default function LabRoom() {
           </div>
         </div>
 
-        {/* ── Center Canvas Area ── */}
+
         <div className="flex-1 flex flex-col relative overflow-hidden bg-[#fafcff]">
-          {/* Top Control Bar */}
+
           <div className="h-[50px] flex justify-center items-center gap-3 border-b border-gray-200 bg-white shadow-sm z-10">
             <button 
               onClick={() => setIsPaused(false)}
@@ -352,7 +361,7 @@ export default function LabRoom() {
             </div>
           </div>
 
-          {/* Canvas Wrapper */}
+
           <div className="flex-1 p-6 relative animate-fade-in">
             <div className="w-full h-full border-2 border-gray-200 rounded-2xl overflow-hidden shadow-sm bg-white relative physics-grid-bg">
               <PhysicsCanvas roomId={roomId} activeTool={activeTool} material={material} isPaused={isPaused} vectorSettings={vectorSettings} simSpeed={simSpeed} />
@@ -360,7 +369,7 @@ export default function LabRoom() {
           </div>
         </div>
 
-        {/* ── Right Sidebar ── */}
+
         <div className="w-[320px] shrink-0 flex flex-col bg-white border-l border-gray-200 z-10 animate-fade-in">
           <div className="flex border-b border-gray-200">
             {['Live Analytics', 'Vectors'].map(tab => (

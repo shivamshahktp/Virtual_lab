@@ -73,29 +73,46 @@ function ToolIcon({ type, active }) {
 export default function Toolbar({ activeTool, setActiveTool, material, setMaterial }) {
   const [showSpringMenu, setShowSpringMenu] = useState(false)
   const [showMotorMenu, setShowMotorMenu] = useState(false)
+  const [showRopeMenu, setShowRopeMenu] = useState(false)
+  const [showRodMenu, setShowRodMenu] = useState(false)
   const [tooltip, setTooltip] = useState(null)
 
-  const handleContextMenu = (e, toolId) => {
+  const toggleMenu = (e, toolId) => {
+    e.stopPropagation()
     if (toolId === 'spring') {
-      e.preventDefault()
       setShowSpringMenu(!showSpringMenu)
       setShowMotorMenu(false)
+      setShowRopeMenu(false)
+      setShowRodMenu(false)
       setActiveTool('spring')
     } else if (toolId === 'motor') {
-      e.preventDefault()
       setShowMotorMenu(!showMotorMenu)
       setShowSpringMenu(false)
+      setShowRopeMenu(false)
+      setShowRodMenu(false)
       setActiveTool('motor')
+    } else if (toolId === 'rope') {
+      setShowRopeMenu(!showRopeMenu)
+      setShowSpringMenu(false)
+      setShowMotorMenu(false)
+      setShowRodMenu(false)
+      setActiveTool('rope')
+    } else if (toolId === 'rod') {
+      setShowRodMenu(!showRodMenu)
+      setShowSpringMenu(false)
+      setShowMotorMenu(false)
+      setShowRopeMenu(false)
+      setActiveTool('rod')
     }
   }
 
   return (
     <div className="absolute top-0 left-0 h-full w-[60px] border-r border-gray-200 bg-white flex flex-col items-center py-2 z-10">
 
-      {/* ── Tool Sidebar ── */}
+
       <div className="flex flex-col gap-2 w-full px-2" style={{ width: '100%' }}>
 
-        {/* Logo divider top */}
+
         <div style={{ padding: '4px 6px 6px', borderBottom: '1px solid var(--color-lab-border-light)', marginBottom: '4px' }}>
           <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
             <rect width="32" height="32" rx="8" fill="#1e6fe8" opacity="0.08"/>
@@ -115,8 +132,9 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
                   setActiveTool(tool.id)
                   if (tool.id !== 'spring') setShowSpringMenu(false)
                   if (tool.id !== 'motor') setShowMotorMenu(false)
+                  if (tool.id !== 'rope') setShowRopeMenu(false)
+                  if (tool.id !== 'rod') setShowRodMenu(false)
                 }}
-                onContextMenu={(e) => handleContextMenu(e, tool.id)}
                 onMouseEnter={() => setTooltip(tool.id)}
                 onMouseLeave={() => setTooltip(null)}
                 title={tool.label}
@@ -136,7 +154,7 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
                 }}
               >
                 <ToolIcon type={tool.icon} active={isActive} />
-                {/* Active indicator dot */}
+
                 {isActive && (
                   <span style={{
                     position: 'absolute',
@@ -150,7 +168,36 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
                 )}
               </button>
 
-              {/* Tooltip */}
+
+              {(tool.id === 'spring' || tool.id === 'motor' || tool.id === 'rope' || tool.id === 'rod') && (
+                <button
+                  onClick={(e) => toggleMenu(e, tool.id)}
+                  style={{
+                    position: 'absolute',
+                    right: '-10px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'var(--color-lab-surface-alt)',
+                    border: '1px solid var(--color-lab-border-light)',
+                    borderRadius: '50%',
+                    width: '16px',
+                    height: '16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    zIndex: 10,
+                    color: 'var(--color-lab-text-muted)'
+                  }}
+                  title="Settings"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 18l6-6-6-6"/>
+                  </svg>
+                </button>
+              )}
+
+
               {tooltip === tool.id && (
                 <div style={{
                   position: 'absolute',
@@ -183,15 +230,15 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
           )
         })}
 
-        {/* Shortcut hint at bottom */}
+
         <div style={{ padding: '6px 0 2px', borderTop: '1px solid var(--color-lab-border-light)', marginTop: '4px', textAlign: 'center' }}>
           <span style={{ fontSize: '9px', color: 'var(--color-lab-text-subtle)', letterSpacing: '0.04em' }}>TOOLS</span>
         </div>
       </div>
 
-      {/* ── Spring Settings Flyout ── */}
+
       {showSpringMenu && (
-        <div className="sci-panel animate-fade-in" style={{ padding: '14px', minWidth: '210px' }}>
+        <div className="sci-panel animate-fade-in" style={{ position: 'absolute', left: '72px', top: '50%', transform: 'translateY(-50%)', padding: '14px', minWidth: '210px', zIndex: 100 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--color-lab-border-light)' }}>
             <div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-lab-text)', letterSpacing: '0.03em' }}>Spring Settings</div>
@@ -208,18 +255,76 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
               type="range" min="0.001" max="0.5" step="0.001"
               value={material?.springStiffness || 0.05}
               onChange={(e) => setMaterial({ ...material, springStiffness: parseFloat(e.target.value) })}
+              style={{ width: '100%', marginBottom: '12px' }}
+            />
+            
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+              <label style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>Length (px)</label>
+              <span className="sci-chip">{Math.round(material?.springLength || 120)}</span>
+            </div>
+            <input
+              type="range" min="20" max="1200" step="5"
+              value={material?.springLength || 120}
+              onChange={(e) => setMaterial({ ...material, springLength: parseFloat(e.target.value) })}
               style={{ width: '100%' }}
             />
-            <p style={{ fontSize: '10px', color: 'var(--color-lab-text-subtle)', marginTop: '6px', lineHeight: 1.5 }}>
-              Higher stiffness = harder to stretch
-            </p>
           </div>
         </div>
       )}
 
-      {/* ── Motor Settings Flyout ── */}
+
+      {showRopeMenu && (
+        <div className="sci-panel animate-fade-in" style={{ position: 'absolute', left: '72px', top: '50%', transform: 'translateY(-50%)', padding: '14px', minWidth: '210px', zIndex: 100 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--color-lab-border-light)' }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-lab-text)', letterSpacing: '0.03em' }}>Rope Settings</div>
+              <div style={{ fontSize: '10px', color: 'var(--color-lab-text-muted)' }}>Slackable constraint</div>
+            </div>
+            <button onClick={() => setShowRopeMenu(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-lab-text-muted)', fontSize: '16px', lineHeight: 1, padding: '2px 4px' }}>×</button>
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+              <label style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>Length (px)</label>
+              <span className="sci-chip">{Math.round(material?.ropeLength || 120)}</span>
+            </div>
+            <input
+              type="range" min="20" max="1200" step="5"
+              value={material?.ropeLength || 120}
+              onChange={(e) => setMaterial({ ...material, ropeLength: parseFloat(e.target.value) })}
+              style={{ width: '100%' }}
+            />
+          </div>
+        </div>
+      )}
+
+
+      {showRodMenu && (
+        <div className="sci-panel animate-fade-in" style={{ position: 'absolute', left: '72px', top: '50%', transform: 'translateY(-50%)', padding: '14px', minWidth: '210px', zIndex: 100 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--color-lab-border-light)' }}>
+            <div>
+              <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-lab-text)', letterSpacing: '0.03em' }}>Rod Settings</div>
+              <div style={{ fontSize: '10px', color: 'var(--color-lab-text-muted)' }}>Rigid connector</div>
+            </div>
+            <button onClick={() => setShowRodMenu(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-lab-text-muted)', fontSize: '16px', lineHeight: 1, padding: '2px 4px' }}>×</button>
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', alignItems: 'center' }}>
+              <label style={{ fontSize: '11px', color: 'var(--color-lab-text-muted)', fontWeight: 500 }}>Length (px)</label>
+              <span className="sci-chip">{Math.round(material?.rodLength || 120)}</span>
+            </div>
+            <input
+              type="range" min="20" max="1200" step="5"
+              value={material?.rodLength || 120}
+              onChange={(e) => setMaterial({ ...material, rodLength: parseFloat(e.target.value) })}
+              style={{ width: '100%' }}
+            />
+          </div>
+        </div>
+      )}
+
+
       {showMotorMenu && (
-        <div className="sci-panel animate-fade-in" style={{ padding: '14px', minWidth: '228px' }}>
+        <div className="sci-panel animate-fade-in" style={{ position: 'absolute', left: '72px', top: '50%', transform: 'translateY(-50%)', padding: '14px', minWidth: '228px', zIndex: 100 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', paddingBottom: '10px', borderBottom: '1px solid var(--color-lab-border-light)' }}>
             <div>
               <div style={{ fontSize: '12px', fontWeight: 700, color: 'var(--color-lab-text)' }}>Motor / Gear</div>
@@ -228,7 +333,7 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
             <button onClick={() => setShowMotorMenu(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--color-lab-text-muted)', fontSize: '16px', lineHeight: 1, padding: '2px 4px' }}>×</button>
           </div>
 
-          {/* Type toggle */}
+
           <div style={{ display: 'flex', gap: '4px', background: 'var(--color-lab-surface-alt)', padding: '3px', borderRadius: '8px', marginBottom: '12px' }}>
             {['gear', 'rod'].map(type => (
               <button
@@ -247,7 +352,7 @@ export default function Toolbar({ activeTool, setActiveTool, material, setMateri
             ))}
           </div>
 
-          {/* Motorized toggle */}
+
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', cursor: 'pointer' }}>
             <input
               type="checkbox"

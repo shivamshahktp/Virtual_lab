@@ -5,12 +5,12 @@ const User = require('../models/User');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'virtual-lab-super-secret-key';
 
-// Register User
+// POST /api/auth/signup: Spin up a new user account
 router.post('/signup', async (req, res) => {
   try {
     const { username, email, password } = req.body;
     
-    // Check if user exists
+    // Prevent duplicate accounts
     const existingUser = await User.findOne({ 
       $or: [{ email }, { username }] 
     });
@@ -22,7 +22,7 @@ router.post('/signup', async (req, res) => {
     const user = new User({ username, email, password });
     await user.save();
     
-    // Generate JWT
+    // Sign a fresh login token that expires in a week
     const token = jwt.sign({ userId: user._id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     
     res.status(201).json({
@@ -35,24 +35,24 @@ router.post('/signup', async (req, res) => {
   }
 });
 
-// Login User
+// POST /api/auth/login: Handle returning users
 router.post('/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
-    // Find user
+    // Match username
     const user = await User.findOne({ username });
     if (!user) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
     
-    // Check password
+    // Verify credentials match
     const isMatch = await user.comparePassword(password);
     if (!isMatch) {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
     
-    // Generate JWT
+    // Sign a fresh login token
     const token = jwt.sign({ userId: user._id, username: user.username }, JWT_SECRET, { expiresIn: '7d' });
     
     res.json({

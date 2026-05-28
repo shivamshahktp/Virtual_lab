@@ -41,7 +41,7 @@ export default function MaterialPicker({ material, setMaterial, activeTool, sele
       className="w-full h-full p-4"
       id="material-picker"
     >
-      {/* Header */}
+
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -70,18 +70,18 @@ export default function MaterialPicker({ material, setMaterial, activeTool, sele
         </div>
       </div>
 
-      {/* Restitution */}
+
       <SliderRow
         label="Restitution"
         symbol="e"
         value={material.restitution}
         display={material.restitution.toFixed(2)}
-        min="0" max="1.5" step="0.05"
+        min="0" max="1" step="0.05"
         onChange={(e) => setMaterial({ ...material, restitution: parseFloat(e.target.value) })}
         hint="Coefficient of restitution — ratio of post- to pre-collision speed"
       />
 
-      {/* Friction */}
+
       <SliderRow
         label="Friction"
         symbol="μ"
@@ -92,7 +92,7 @@ export default function MaterialPicker({ material, setMaterial, activeTool, sele
         hint="Coulomb friction coefficient — resistance to sliding contact"
       />
 
-      {/* Density */}
+
       <SliderRow
         label="Density"
         symbol="ρ"
@@ -103,7 +103,7 @@ export default function MaterialPicker({ material, setMaterial, activeTool, sele
         hint={showLengthControl ? 'Mass per unit area — affects inertia' : 'Mass per unit area — affects inertia'}
       />
 
-      {/* Link length — shown only for constraints */}
+
       {showLengthControl && (
         <div style={{
           marginTop: '4px',
@@ -111,18 +111,35 @@ export default function MaterialPicker({ material, setMaterial, activeTool, sele
           borderTop: '1px dashed var(--color-lab-border-light)',
         }}>
           <SliderRow
-            label="Link Length"
+            label={
+              (activeTool === 'rod' || selectedConstraintType === 'rod') ? "Rod Length" :
+              (activeTool === 'spring' || selectedConstraintType === 'spring') ? "Spring Length" :
+              "Rope Length"
+            }
             symbol="L"
-            value={material.ropeLength ?? 120}
-            display={`${Math.round(material.ropeLength ?? 120)} px`}
+            value={
+              (activeTool === 'rod' || selectedConstraintType === 'rod') ? (material.rodLength ?? 120) :
+              (activeTool === 'spring' || selectedConstraintType === 'spring') ? (material.springLength ?? 120) :
+              (material.ropeLength ?? 120)
+            }
+            display={`${Math.round(
+              (activeTool === 'rod' || selectedConstraintType === 'rod') ? (material.rodLength ?? 120) :
+              (activeTool === 'spring' || selectedConstraintType === 'spring') ? (material.springLength ?? 120) :
+              (material.ropeLength ?? 120)
+            )} px`}
             min="20" max={maxLinkLength} step="5"
-            onChange={(e) => setMaterial({ ...material, ropeLength: parseFloat(e.target.value) })}
+            onChange={(e) => {
+              const val = parseFloat(e.target.value)
+              if (activeTool === 'rod' || selectedConstraintType === 'rod') setMaterial({ ...material, rodLength: val })
+              else if (activeTool === 'spring' || selectedConstraintType === 'spring') setMaterial({ ...material, springLength: val })
+              else setMaterial({ ...material, ropeLength: val })
+            }}
             hint="Natural length of the selected or new constraint"
           />
         </div>
       )}
 
-      {/* Footer legend */}
+
       <div style={{
         marginTop: '2px',
         padding: '8px 10px',

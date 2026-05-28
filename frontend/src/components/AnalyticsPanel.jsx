@@ -38,9 +38,11 @@ export default function AnalyticsPanel() {
 
       if (e.detail.telemetry) {
         setHistory(prev => {
-          const newEnergy = parseFloat(e.detail.telemetry.energy)
+          const newEnergy = e.detail.telemetry.rawEnergy !== undefined 
+            ? e.detail.telemetry.rawEnergy 
+            : parseFloat(e.detail.telemetry.energy)
           const nextHistory = [...prev, { t: prev.length, energy: newEnergy }]
-          if (nextHistory.length > 80) return nextHistory.slice(nextHistory.length - 80)
+          if (nextHistory.length > 400) return nextHistory.slice(nextHistory.length - 400)
           return nextHistory
         })
       } else {

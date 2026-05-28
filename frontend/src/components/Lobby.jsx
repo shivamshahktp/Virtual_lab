@@ -78,7 +78,7 @@ export default function Lobby({ onJoinRoom }) {
       fontFamily: 'Space Grotesk, Inter, sans-serif',
     }}>
 
-      {/* Top accent bar */}
+
       <div style={{
         position: 'fixed', top: 0, left: 0, right: 0, height: '3px',
         background: 'linear-gradient(90deg, #1e6fe8, #3b82f6, #60a5fa, #3b82f6, #1e6fe8)',
@@ -87,9 +87,9 @@ export default function Lobby({ onJoinRoom }) {
 
       <div style={{ width: '100%', maxWidth: '440px' }}>
 
-        {/* ── Hero ── */}
+
         <div style={{ textAlign: 'center', marginBottom: '36px' }}>
-          {/* Icon */}
+
           <div style={{
             width: '72px', height: '72px', borderRadius: '20px',
             background: 'white',
@@ -117,7 +117,7 @@ export default function Lobby({ onJoinRoom }) {
             Collaborative 2D Physics Simulation Engine
           </p>
 
-          {/* Feature badges */}
+
           <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', marginTop: '16px', flexWrap: 'wrap' }}>
             {['Real-time Sync', 'Matter.js Engine', 'MongoDB Persistence'].map(tag => (
               <span key={tag} style={{
@@ -131,7 +131,7 @@ export default function Lobby({ onJoinRoom }) {
           </div>
         </div>
 
-        {/* ── Main Card ── */}
+
         <div style={{
           background: 'white',
           border: '1px solid rgba(203,213,224,0.8)',
@@ -140,7 +140,7 @@ export default function Lobby({ onJoinRoom }) {
           boxShadow: '0 2px 8px rgba(0,0,0,0.06), 0 8px 32px rgba(0,0,0,0.04)',
         }}>
 
-          {/* Create Room */}
+
           <button
             id="btn-create-room"
             onClick={handleCreate}
@@ -183,7 +183,7 @@ export default function Lobby({ onJoinRoom }) {
             )}
           </button>
 
-          {/* Divider */}
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: '18px 0' }}>
             <div style={{ flex: 1, height: '1px', background: 'var(--color-lab-border-light)' }} />
             <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
@@ -192,7 +192,7 @@ export default function Lobby({ onJoinRoom }) {
             <div style={{ flex: 1, height: '1px', background: 'var(--color-lab-border-light)' }} />
           </div>
 
-          {/* Join Room */}
+
           <div style={{ display: 'flex', gap: '8px' }}>
             <input
               id="input-room-code"
@@ -259,12 +259,12 @@ export default function Lobby({ onJoinRoom }) {
           )}
         </div>
 
-        {/* Hint */}
+
         <p style={{ textAlign: 'center', color: '#94a3b8', fontSize: '12px', marginTop: '16px', fontWeight: 400 }}>
           Share your room code to collaborate in real-time
         </p>
 
-        {/* ── Experiment Library ── */}
+
         {!isLoadingGallery && gallery.length > 0 && (
           <div style={{ marginTop: '32px' }} className="animate-fade-in">
             <div style={{
@@ -331,7 +331,7 @@ export default function Lobby({ onJoinRoom }) {
           </div>
         )}
 
-        {/* Footer */}
+
         <div style={{ textAlign: 'center', marginTop: '40px' }}>
           <span style={{ fontSize: '11px', color: '#cbd5e0', fontWeight: 400 }}>
             Powered by Matter.js · Socket.io · MongoDB
